@@ -1,0 +1,24 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+.venv/
+venv/
+
+# Secrets and local config
+.env
+.env.*
+!.env.example
+.greennode.json
+.agentbase/
+.agentbase-state.json
+.agentbase-*.json
+.agentbase-last-image
+*.credentials.json
+
+# OS/editor
+.DS_Store
+.vscode/
+.cursor/
