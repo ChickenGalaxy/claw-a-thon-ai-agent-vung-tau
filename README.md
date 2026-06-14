@@ -1,6 +1,7 @@
 # Claw-a-thon AI Agent Vung Tau
 
-Simple GreenNode AgentBase agent that answers questions from a Supabase table.
+Simple GreenNode AgentBase analytics agent that answers questions from bundled
+Parquet data and optional uploaded files.
 
 ## Local configuration
 
@@ -15,10 +16,13 @@ Copy `.env.example` to `.env` and fill in:
 
 Optional:
 
+- `DATA_SOURCE` defaults to `parquet`
+- `PARQUET_PATH` defaults to `data/event_log.parquet`
 - `SUPABASE_SELECT` limits returned columns, for example `id,name,total,created_at`
 - `MAX_ROWS` caps rows sent to the LLM, default `100`
 - `SYSTEM_PROMPT_PATH` points to the Markdown system prompt, default `prompts/system_prompt.md`
 
+Supabase is a legacy optional connector. Set `DATA_SOURCE=supabase` to use it.
 `SUPABASE_URL` can be either the Supabase REST URL (`https://...supabase.co`) or
 a direct Postgres connection string (`postgresql://...`).
 

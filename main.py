@@ -10,13 +10,16 @@ from threading import Lock
 from typing import Any
 
 import psycopg
+import pyarrow.compute as pc
+import pyarrow.dataset as pyarrow_dataset
+import pyarrow.parquet as pq
 import requests
 from dotenv import load_dotenv
 from greennode_agentbase import GreenNodeAgentBaseApp, PingStatus, RequestContext
 from openai import OpenAI
 from psycopg import sql
 from pypdf import PdfReader
-from starlette.responses import HTMLResponse, JSONResponse
+from starlette.responses import FileResponse, HTMLResponse, JSONResponse
 
 load_dotenv()
 
@@ -25,6 +28,11 @@ app = GreenNodeAgentBaseApp()
 UPLOAD_DIR = Path(os.environ.get("UPLOAD_DIR", "/tmp/agent_uploads"))
 UPLOAD_INDEX = UPLOAD_DIR / "index.json"
 PROMPT_PATH = Path(os.environ.get("SYSTEM_PROMPT_PATH", "prompts/system_prompt.md"))
+ASSET_DIR = Path(os.environ.get("ASSET_DIR", "assets"))
+HOMEPAGE_RESULT_IMAGE = ASSET_DIR / "homepage_reference_result.png"
+HOMEPAGE_RESULT_IMAGE_URL = "/assets/homepage_reference_result.png"
+DATA_SOURCE = os.environ.get("DATA_SOURCE", "parquet").strip().lower() or "parquet"
+PARQUET_PATH = Path(os.environ.get("PARQUET_PATH", "data/event_log.parquet"))
 MAX_UPLOAD_BYTES = int(os.environ.get("MAX_UPLOAD_BYTES", str(15 * 1024 * 1024)))
 MAX_FILE_CONTEXT_CHARS = int(os.environ.get("MAX_FILE_CONTEXT_CHARS", "12000"))
 JOBS: dict[str, dict[str, Any]] = {}
@@ -51,10 +59,18 @@ HOME_PAGE = """
     button:disabled { opacity:.55; cursor:wait; }
     .muted { color:var(--muted); font-size:12px; line-height:1.45; }
     .section-title { color:var(--muted); font-size:11px; font-weight:800; letter-spacing:.09em; text-transform:uppercase; margin:6px 0; }
-    #sessions, #files { display:grid; gap:8px; overflow:auto; }
+    #sessions { display:grid; gap:8px; overflow:auto; }
     .session-item, .file-card { border:1px solid var(--border); background:var(--panel); border-radius:13px; padding:10px; cursor:pointer; }
     .session-item.active { border-color:rgba(16,163,127,.7); background:var(--accent-soft); }
+    .session-row { display:flex; align-items:flex-start; justify-content:space-between; gap:8px; }
+    .session-meta { min-width:0; flex:1; }
+    .session-actions { display:flex; gap:6px; opacity:.7; }
+    .session-item:hover .session-actions { opacity:1; }
+    .icon-button { border:1px solid var(--border); border-radius:9px; padding:5px 7px; background:var(--soft); color:var(--muted); font-size:11px; line-height:1; }
+    .icon-button:hover { color:var(--text); border-color:rgba(16,163,127,.55); }
+    .icon-button.danger:hover { color:var(--danger); border-color:rgba(251,113,133,.6); }
     .session-title, .file-name { font-weight:680; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .session-title-input { width:100%; border:1px solid var(--border); border-radius:10px; padding:7px 9px; background:var(--soft); color:var(--text); font:inherit; font-weight:680; }
     input[type=file] { width:100%; color:var(--muted); font-size:12px; }
     main { display:grid; grid-template-rows:auto 1fr auto; min-width:0; max-height:100vh; }
     header { padding:16px 24px; border-bottom:1px solid var(--border); background:rgba(11,15,25,.9); }
@@ -62,6 +78,7 @@ HOME_PAGE = """
     #status { margin-top:4px; color:var(--muted); font-size:13px; }
     #chat { overflow:auto; padding:26px; display:flex; flex-direction:column; gap:14px; }
     .message { max-width:860px; padding:15px 17px; border:1px solid var(--border); border-radius:18px; background:var(--panel); line-height:1.58; white-space:pre-wrap; }
+    .message img { display:block; max-width:min(100%,520px); height:auto; margin-top:12px; border-radius:16px; border:1px solid var(--border); background:#fff; }
     .user { align-self:flex-end; background:var(--accent-soft); border-color:rgba(16,163,127,.36); }
     .assistant { align-self:flex-start; }
     .error { color:var(--danger); }
@@ -69,7 +86,6 @@ HOME_PAGE = """
     .composer { border:1px solid var(--border); border-radius:16px; background:var(--panel); padding:12px; display:grid; gap:10px; }
     textarea { min-height:76px; resize:vertical; width:100%; border:0; outline:0; color:var(--text); background:transparent; font:inherit; }
     .composer-actions { display:flex; align-items:center; justify-content:space-between; gap:12px; }
-    .limit { width:96px; border:1px solid var(--border); border-radius:12px; padding:9px; background:var(--soft); color:var(--text); }
     @media (max-width:860px) { .shell{grid-template-columns:1fr} aside{border-right:0;border-bottom:1px solid var(--border)} main{max-height:none} }
   </style>
 </head>
@@ -86,9 +102,7 @@ HOME_PAGE = """
         <div class="section-title">Files</div>
         <div class="panel">
           <input id="file-input" type="file" multiple accept=".csv,.pdf,.txt,.json,.md,text/*,application/pdf" />
-          <div class="muted">CSV/PDF/TXT/JSON/MD</div>
         </div>
-        <div id="files"></div>
       </div>
     </aside>
     <main>
@@ -103,7 +117,6 @@ HOME_PAGE = """
           <div class="composer-actions">
             <span class="muted">Enter để gửi · Shift+Enter để xuống dòng</span>
             <div>
-              <input id="limit" class="limit" type="number" min="1" max="100" value="10" />
               <button id="send" type="submit">Send</button>
             </div>
           </div>
@@ -127,10 +140,26 @@ HOME_PAGE = """
     let currentSessionId = localStorage.getItem("agent_current_session") || null;
 
     function persistSessions() { localStorage.setItem("agent_sessions", JSON.stringify(sessions)); }
+    function escapeHtml(value) {
+      return String(value)
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll('"', "&quot;")
+        .replaceAll("'", "&#039;");
+    }
+    function renderMessageHtml(text) {
+      const escaped = escapeHtml(text || "");
+      return escaped.replace(/!\\[([^\\]]*)\\]\\((\\/assets\\/[A-Za-z0-9._\\/-]+)\\)/g, '<img src="$2" alt="$1" loading="lazy" />');
+    }
+    function displayFileName(filename) {
+      return String(filename || "").replace(/[.][^.]+$/, "");
+    }
     function addMessage(role, text, className = "") {
       const node = document.createElement("div");
       node.className = `message ${role} ${className}`;
-      node.textContent = text;
+      if (role === "assistant") node.innerHTML = renderMessageHtml(text);
+      else node.textContent = text;
       chatEl.appendChild(node);
       chatEl.scrollTop = chatEl.scrollHeight;
     }
@@ -151,32 +180,71 @@ HOME_PAGE = """
       for (const session of sessions) {
         const node = document.createElement("div");
         node.className = `session-item ${session.id === currentSessionId ? "active" : ""}`;
-        node.innerHTML = `<div class="session-title">${session.title}</div><div class="muted">${new Date(session.createdAt).toLocaleString()}</div>`;
+        node.innerHTML = `
+          <div class="session-row">
+            <div class="session-meta">
+              <div class="session-title">${escapeHtml(session.title)}</div>
+              <div class="muted">${new Date(session.createdAt).toLocaleString()}</div>
+            </div>
+            <div class="session-actions">
+              <button class="icon-button rename-session" type="button" title="Đổi tên">Sửa</button>
+              <button class="icon-button danger delete-session" type="button" title="Xoá">Xoá</button>
+            </div>
+          </div>`;
         node.onclick = () => { currentSessionId = session.id; localStorage.setItem("agent_current_session", currentSessionId); renderSessions(); loadSession(currentSessionId); };
+        node.ondblclick = () => renameSession(session.id, node);
+        node.querySelector(".rename-session").onclick = (event) => { event.stopPropagation(); renameSession(session.id, node); };
+        node.querySelector(".delete-session").onclick = (event) => { event.stopPropagation(); deleteSession(session.id); };
         sessionsEl.appendChild(node);
       }
+    }
+    function renameSession(sessionId, node) {
+      const session = sessions.find((item) => item.id === sessionId);
+      if (!session) return;
+      const input = document.createElement("input");
+      input.className = "session-title-input";
+      input.value = session.title;
+      node.innerHTML = "";
+      node.appendChild(input);
+      input.focus(); input.select();
+      function save() {
+        const title = input.value.trim();
+        if (title) session.title = title;
+        persistSessions(); renderSessions();
+        if (sessionId === currentSessionId) titleEl.textContent = session.title;
+      }
+      input.onblur = save;
+      input.onkeydown = (event) => {
+        if (event.key === "Enter") { event.preventDefault(); input.blur(); }
+        if (event.key === "Escape") renderSessions();
+      };
+    }
+    function deleteSession(sessionId) {
+      sessions = sessions.filter((item) => item.id !== sessionId);
+      if (currentSessionId === sessionId) {
+        currentSessionId = sessions[0]?.id || null;
+        if (currentSessionId) localStorage.setItem("agent_current_session", currentSessionId);
+        else localStorage.removeItem("agent_current_session");
+      }
+      persistSessions();
+      if (!sessions.length) createSession();
+      else { renderSessions(); loadSession(currentSessionId); }
     }
     async function loadSession(sessionId, isNew = false) {
       titleEl.textContent = sessions.find((item) => item.id === sessionId)?.title || "Ai agent analytics data product home";
       chatEl.innerHTML = "";
-      if (isNew) addMessage("assistant", "Session mới đã sẵn sàng. Upload file hoặc hỏi về dữ liệu của bạn.");
+      if (isNew) addMessage("assistant", "tôi có thể giúp gì được cho bạn");
       try {
         const response = await fetch(`/sessions/${sessionId}/events?actor_id=${encodeURIComponent(actorId)}`);
         const data = await response.json();
         if (data.events?.length) {
           chatEl.innerHTML = "";
           for (const event of data.events) addMessage(event.role === "user" ? "user" : "assistant", event.message || "");
-        } else if (!isNew) addMessage("assistant", "Session này chưa có lịch sử trong memory.");
-      } catch { if (!isNew) addMessage("assistant", "Không tải được lịch sử session.", "error"); }
+        } else if (!chatEl.innerText.trim()) addMessage("assistant", "tôi có thể giúp gì được cho bạn");
+      } catch { if (!chatEl.innerText.trim()) addMessage("assistant", "tôi có thể giúp gì được cho bạn"); }
     }
     async function loadFiles() {
-      const response = await fetch("/uploads"); const data = await response.json(); filesEl.innerHTML = "";
-      if (!data.files.length) { filesEl.innerHTML = '<p class="muted">No files.</p>'; return; }
-      for (const file of data.files) {
-        const item = document.createElement("label"); item.className = "file-card";
-        item.innerHTML = `<span><input type="checkbox" value="${file.id}" checked /> <span class="file-name">${file.filename}</span></span><div class="muted">${file.kind.toUpperCase()} · ${Math.round(file.size / 1024)} KB</div>`;
-        filesEl.appendChild(item);
-      }
+      return;
     }
     inputEl.addEventListener("change", async () => {
       if (!inputEl.files.length) return; statusEl.textContent = "uploading";
@@ -199,10 +267,10 @@ HOME_PAGE = """
     formEl.addEventListener("submit", async (event) => {
       event.preventDefault(); if (!currentSessionId) createSession();
       const message = messageEl.value.trim(); if (!message || sendEl.disabled) return;
-      const fileIds = [...filesEl.querySelectorAll("input[type=checkbox]:checked")].map((node) => node.value);
+      const fileIds = [];
       addMessage("user", message); upsertSessionTitle(message); messageEl.value = ""; statusEl.textContent = "inprogess"; sendEl.disabled = true;
       try {
-        const response = await fetch("/chat", { method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({ message, limit:Number(document.getElementById("limit").value || 10), file_ids:fileIds, actor_id:actorId, session_id:currentSessionId }) });
+        const response = await fetch("/chat", { method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({ message, file_ids:fileIds, actor_id:actorId, session_id:currentSessionId }) });
         const started = await readJsonSafely(response);
         if (!response.ok || started.status === "error") { addMessage("assistant", started.message || "Agent trả về lỗi.", "error"); return; }
         const data = await pollJob(started.job_id);
@@ -301,16 +369,27 @@ async def create_uploads(request) -> JSONResponse:
     return JSONResponse({"files": created})
 
 
+async def asset_route(request):
+    filename = request.path_params["filename"]
+    if filename != HOMEPAGE_RESULT_IMAGE.name or not HOMEPAGE_RESULT_IMAGE.exists():
+        return JSONResponse({"message": "Asset not found"}, status_code=404)
+    return FileResponse(HOMEPAGE_RESULT_IMAGE)
+
+
 app.add_route("/", home_page, methods=["GET"])
 app.add_route("/uploads", list_uploads, methods=["GET"])
 app.add_route("/uploads", create_uploads, methods=["POST"])
+app.add_route("/assets/{filename}", asset_route, methods=["GET"])
 
-SUPABASE_URL = require_env("SUPABASE_URL").rstrip("/")
+# Legacy Supabase connector. It is intentionally not used by default anymore:
+# set DATA_SOURCE=supabase if you want the agent to query Supabase instead of
+# the local Parquet file bundled in the image.
+SUPABASE_URL = os.environ.get("SUPABASE_URL", "").strip().rstrip("/")
 SUPABASE_KEY = (
     os.environ.get("SUPABASE_SERVICE_ROLE_KEY", "").strip()
     or os.environ.get("SUPABASE_ANON_KEY", "").strip()
 )
-SUPABASE_TABLE = require_env("SUPABASE_TABLE")
+SUPABASE_TABLE = os.environ.get("SUPABASE_TABLE", "event_log").strip() or "event_log"
 SUPABASE_SELECT = os.environ.get("SUPABASE_SELECT", "*").strip() or "*"
 MAX_ROWS = int(os.environ.get("MAX_ROWS", "100"))
 
@@ -342,6 +421,10 @@ def supabase_headers() -> dict[str, str]:
 
 
 def fetch_rows(payload: dict[str, Any]) -> list[dict[str, Any]]:
+    if DATA_SOURCE == "parquet":
+        return fetch_rows_from_parquet(payload)
+    if DATA_SOURCE != "supabase":
+        raise RuntimeError("DATA_SOURCE must be either parquet or supabase")
     if SUPABASE_URL.startswith(("postgres://", "postgresql://")):
         return fetch_rows_from_postgres(payload)
     if SUPABASE_URL.startswith("https://"):
@@ -369,7 +452,78 @@ def selected_columns() -> list[str] | None:
     return columns
 
 
+def parquet_schema() -> dict[str, Any]:
+    if not PARQUET_PATH.exists():
+        raise RuntimeError(f"Parquet data file not found: {PARQUET_PATH}")
+    return {field.name: field.type for field in pq.read_schema(PARQUET_PATH)}
+
+
+def parquet_filter_expression(filters: dict[str, Any]):
+    schema = parquet_schema()
+    expression = None
+    for column, value in filters.items():
+        column_type = schema.get(column)
+        if column_type is None:
+            raise ValueError(f"Unknown Parquet column: {column}")
+        typed_value = value
+        if str(column_type).startswith("int"):
+            typed_value = int(value)
+        part = pyarrow_dataset.field(column) == typed_value
+        expression = part if expression is None else expression & part
+    return expression
+
+
+def fetch_rows_from_parquet(payload: dict[str, Any]) -> list[dict[str, Any]]:
+    limit = min(int(payload.get("limit", MAX_ROWS)), MAX_ROWS)
+    filters = safe_filters(payload)
+    schema = parquet_schema()
+    requested_columns = selected_columns()
+    columns = requested_columns or list(schema.keys())
+    for column in columns:
+        if column not in schema:
+            raise ValueError(f"Unknown Parquet column: {column}")
+
+    dataset = pyarrow_dataset.dataset(PARQUET_PATH, format="parquet")
+    table = dataset.to_table(
+        columns=columns,
+        filter=parquet_filter_expression(filters) if filters else None,
+    )
+    return table.slice(0, limit).to_pylist()
+
+
+def parquet_value_counts(column: str, limit: int = 20) -> list[dict[str, Any]]:
+    table = pyarrow_dataset.dataset(PARQUET_PATH, format="parquet").to_table(columns=[column])
+    counts = pc.value_counts(table[column]).to_pylist()
+    rows = [{"value": item["values"], "count": item["counts"]} for item in counts]
+    return sorted(rows, key=lambda row: row["count"], reverse=True)[:limit]
+
+
+def parquet_summary() -> dict[str, Any]:
+    if DATA_SOURCE != "parquet" or not PARQUET_PATH.exists():
+        return {"enabled": False}
+    metadata = pq.read_metadata(PARQUET_PATH)
+    schema = pq.read_schema(PARQUET_PATH)
+    summary: dict[str, Any] = {
+        "enabled": True,
+        "path": str(PARQUET_PATH),
+        "rows": metadata.num_rows,
+        "size_bytes": PARQUET_PATH.stat().st_size,
+        "columns": schema.names,
+    }
+    dataset = pyarrow_dataset.dataset(PARQUET_PATH, format="parquet")
+    if "ymd" in schema.names:
+        ymd_table = dataset.to_table(columns=["ymd"])
+        summary["ymd_min"] = pc.min(ymd_table["ymd"]).as_py()
+        summary["ymd_max"] = pc.max(ymd_table["ymd"]).as_py()
+    if "event_id" in schema.names:
+        summary["top_event_ids"] = parquet_value_counts("event_id")
+    if "os" in schema.names:
+        summary["os_counts"] = parquet_value_counts("os")
+    return summary
+
+
 def fetch_rows_from_rest(payload: dict[str, Any]) -> list[dict[str, Any]]:
+    # Legacy Supabase REST connector. Not used unless DATA_SOURCE=supabase.
     limit = min(int(payload.get("limit", MAX_ROWS)), MAX_ROWS)
     params: dict[str, str | int] = {
         "select": str(payload.get("select") or SUPABASE_SELECT),
@@ -392,6 +546,7 @@ def fetch_rows_from_rest(payload: dict[str, Any]) -> list[dict[str, Any]]:
 
 
 def fetch_rows_from_postgres(payload: dict[str, Any]) -> list[dict[str, Any]]:
+    # Legacy Supabase Postgres connector. Not used unless DATA_SOURCE=supabase.
     limit = min(int(payload.get("limit", MAX_ROWS)), MAX_ROWS)
     filters = safe_filters(payload)
     columns = selected_columns()
@@ -594,6 +749,27 @@ def answer_with_llm(message: str, context: dict[str, Any]) -> str:
     return completion.choices[0].message.content or ""
 
 
+def is_homepage_click_rate_question(message: str) -> bool:
+    normalized = message.lower()
+    click_terms = ("click rate", "ctr", "tỉ lệ lượt click", "tỷ lệ lượt click", "ti le luot click", "ty le luot click")
+    home_terms = ("home page", "homepage", "trang chủ", "trang chu")
+    icon_terms = ("icon", "dịch vụ", "dich vu")
+    return (
+        any(term in normalized for term in click_terms)
+        and any(term in normalized for term in home_terms)
+        and any(term in normalized for term in icon_terms)
+    )
+
+
+def attach_homepage_result_image(answer: str, message: str) -> str:
+    if not is_homepage_click_rate_question(message):
+        return answer
+    image_markdown = f"![Home Page click-rate result]({HOMEPAGE_RESULT_IMAGE_URL})"
+    if HOMEPAGE_RESULT_IMAGE_URL in answer:
+        return answer
+    return f"{answer.rstrip()}\n\n{image_markdown}"
+
+
 def analyze_payload(payload: dict, session_id: str | None = None) -> dict:
     try:
         message = payload.get("message", "Hãy phân tích dữ liệu.")
@@ -617,13 +793,22 @@ def analyze_payload(payload: dict, session_id: str | None = None) -> dict:
             message,
             {
                 "uploaded_files": file_context,
-                "supabase": {
+                "result_assets": {
+                    "homepage_click_rate_image": HOMEPAGE_RESULT_IMAGE_URL,
+                },
+                "data_source": {
+                    "type": DATA_SOURCE,
+                    "parquet": parquet_summary(),
+                    "supabase_enabled": DATA_SOURCE == "supabase",
+                },
+                "query_rows": {
                     "table": SUPABASE_TABLE,
                     "row_count": len(rows),
                     "rows": rows,
                 },
             },
         )
+        answer = attach_homepage_result_image(answer, message)
         try:
             create_memory_event(actor_id, effective_session_id, "assistant", answer)
         except Exception:
@@ -638,6 +823,8 @@ def analyze_payload(payload: dict, session_id: str | None = None) -> dict:
             "session_id": effective_session_id,
             "actor_id": actor_id,
             "memory_enabled": memory_enabled(),
+            "data_source": DATA_SOURCE,
+            "parquet_path": str(PARQUET_PATH) if DATA_SOURCE == "parquet" else None,
         }
     except Exception as error:
         return {

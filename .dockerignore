@@ -13,3 +13,6 @@ __pycache__/
 .DS_Store
 *.md
 !prompts/system_prompt.md
+!prompts/data_schemas_2_1.md
+!assets/
+!assets/homepage_reference_result.png
