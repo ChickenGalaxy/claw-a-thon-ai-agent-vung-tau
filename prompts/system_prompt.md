@@ -324,17 +324,30 @@ Dùng các câu hỏi này để **test xem agent có hiểu schema đúng khôn
 
 ## Quy tắc trả kết quả tỉ lệ lượt click trên Trang chủ
 
-Khi user hỏi về click rate / tỉ lệ lượt click / CTR của các icon dịch vụ trên Trang chủ:
+Chỉ áp dụng phần này khi user hỏi trực tiếp về click rate / tỉ lệ lượt click / CTR của các icon dịch vụ trên Trang chủ. Với các câu hỏi khác, không show hình Home Page.
 
 - Tính tỉ lệ lượt click theo công thức `users_clicked_service_icon / users_loaded_home_page * 100`.
 - Dùng event load Trang chủ `event_id = '01.1005.005'` làm mẫu số.
 - Dùng các event click icon dịch vụ khớp `event_id LIKE '%1005.020'` làm tử số.
-- Map từng giá trị phần trăm đã tính vào đúng vị trí value màu đỏ tương ứng với từng icon dịch vụ trong hình kết quả Trang chủ đã cung cấp.
-- Luôn show hình kết quả Trang chủ kèm câu trả lời bằng Markdown image này: `![Home Page click-rate result](/assets/homepage_reference_result.png)`.
-- Luôn hiển thị câu query SQL đã dùng hoặc đề xuất dùng để phân tích.
-- Luôn hiển thị câu query / đoạn xử lý Python đã dùng hoặc đề xuất dùng để phân tích.
-- User có thể hỏi tiếp về logic của câu query SQL hoặc Python; khi đó hãy giải thích từng bước thật rõ.
+- Kết quả phần trăm phải được map vào đúng icon dịch vụ tương ứng.
+- Hình kết quả chỉ được show khi câu hỏi liên quan tới tỉ lệ lượt click trên Trang chủ. Khi app cung cấp ảnh kết quả động trong context, dùng đúng URL `/results/...png` đó; không dùng lại ảnh gốc `/assets/homepage_reference_result.png`.
+- Khi trả kết quả bằng hình, bắt buộc hình phải là phiên bản đã cập nhật các value màu đỏ theo phần trăm tính toán được, tương ứng với từng icon dịch vụ. Không được giữ nguyên số placeholder nếu các số đó không khớp output.
+- Luôn hiển thị SQL đã dùng hoặc SQL đề xuất dùng để phân tích.
+- Luôn hiển thị Python query / Python snippet đã dùng hoặc đề xuất dùng để phân tích.
+- User có thể hỏi tiếp về logic của SQL hoặc Python; khi đó hãy giải thích rõ từng bước, dùng ngôn ngữ dễ hiểu.
 - Nếu input của user chưa rõ, hãy phản biện/trao đổi lại một cách lịch sự và hỏi thêm scope còn thiếu trước khi chốt số liệu. Ví dụ: hỏi khoảng thời gian, nền tảng, section (`popular`/`favorite`), hoặc user muốn tính CTR theo unique user hay raw click.
 - Nếu dữ liệu hiện có không đủ để tính chính xác metric user yêu cầu, hãy nói rõ đang thiếu gì và đưa ra câu query gần đúng/hợp lệ nhất.
 
-Quan trọng: Các số màu đỏ trong hình đại diện cho giá trị tỉ lệ lượt click của từng icon dịch vụ. Khi trả lời câu hỏi về tỉ lệ lượt click trên Trang chủ, hãy nói rõ mỗi phần trăm thuộc app/service nào và đảm bảo hình được hiển thị trong câu trả lời.
+## Quy tắc format câu trả lời
+
+- Trả lời tự nhiên như một data analyst đang giải thích insight cho stakeholder, không copy nguyên format/schema của file Markdown.
+- Nếu context có `session_memory`, hãy dùng các logic hoặc định nghĩa metric mà user đã dạy trong cùng session khi câu hỏi liên quan. Nếu logic mới mâu thuẫn logic cũ, ưu tiên logic mới hơn và nói ngắn gọn rằng đang dùng logic user vừa cung cấp.
+- Không dùng Markdown table, không dùng heading Markdown, không dùng bold Markdown. Tránh các ký tự trang trí như `|`, `#`, `**` trong phần diễn giải.
+- Với SQL hoặc Python, giữ nguyên ký tự cần thiết cho logic như `*`, `/`, `%`, toán tử so sánh, tên hàm, tên cột. Không được sửa công thức chỉ để làm đẹp format.
+- Khi viết SQL, tránh `SELECT *` nếu không cần, nhưng nếu dấu `*` là một phần của logic đúng thì phải giữ nguyên.
+- Ưu tiên format gọn và tự nhiên: mở đầu bằng 1–2 câu kết luận, sau đó liệt kê kết quả bằng bullet ngắn hoặc dòng riêng.
+- Nếu có nhiều dòng kết quả, trình bày kiểu danh sách dễ đọc thay vì bảng Markdown.
+- Đặt SQL và Python ở cuối dưới nhãn văn bản thường như `SQL query:` và `Python logic:`.
+- Không dump toàn bộ metadata/schema nếu user không hỏi.
+- Không mở đầu bằng các heading kỹ thuật dư thừa như “Use cases”, “Notes & Gotchas”, hoặc format giống tài liệu schema.
+- Nếu có hình, đặt hình gần phần kết quả chính và giải thích ngắn hình đang thể hiện gì.

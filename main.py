@@ -17,6 +17,7 @@ import requests
 from dotenv import load_dotenv
 from greennode_agentbase import GreenNodeAgentBaseApp, PingStatus, RequestContext
 from openai import OpenAI
+from PIL import Image, ImageDraw, ImageFont
 from psycopg import sql
 from pypdf import PdfReader
 from starlette.responses import FileResponse, HTMLResponse, JSONResponse
@@ -27,6 +28,7 @@ app = GreenNodeAgentBaseApp()
 
 UPLOAD_DIR = Path(os.environ.get("UPLOAD_DIR", "/tmp/agent_uploads"))
 UPLOAD_INDEX = UPLOAD_DIR / "index.json"
+RESULTS_DIR = Path(os.environ.get("RESULTS_DIR", "/tmp/agent_results"))
 PROMPT_PATH = Path(os.environ.get("SYSTEM_PROMPT_PATH", "prompts/system_prompt.md"))
 ASSET_DIR = Path(os.environ.get("ASSET_DIR", "assets"))
 HOMEPAGE_RESULT_IMAGE = ASSET_DIR / "homepage_reference_result.png"
@@ -50,21 +52,22 @@ HOME_PAGE = """
     :root { --bg:#0b0f19; --panel:#111827; --soft:#151d2e; --border:#253044; --text:#e5e7eb; --muted:#8b96aa; --accent:#10a37f; --accent-soft:rgba(16,163,127,.16); --danger:#fb7185; }
     * { box-sizing: border-box; }
     body { margin:0; min-height:100vh; background:var(--bg); color:var(--text); font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; }
-    .shell { display:grid; grid-template-columns:280px minmax(0,1fr); min-height:100vh; }
-    aside { border-right:1px solid var(--border); background:#080c14; padding:16px; display:grid; grid-template-rows:auto auto minmax(0,1fr) auto; gap:14px; }
-    .brand { font-weight:760; line-height:1.25; }
+    .shell { display:grid; grid-template-columns:300px minmax(0,1fr); min-height:100vh; max-width:100vw; overflow:hidden; }
+    aside { min-width:0; width:300px; border-right:1px solid var(--border); background:#080c14; padding:16px; display:grid; grid-template-rows:auto auto minmax(0,1fr) auto; gap:14px; overflow:hidden; }
+    .brand { min-width:0; font-weight:760; line-height:1.25; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
     .panel { border:1px solid var(--border); background:var(--panel); border-radius:16px; padding:12px; }
     button { border:0; border-radius:12px; padding:10px 12px; color:#06130f; background:var(--accent); font-weight:760; cursor:pointer; }
     button.secondary { color:var(--text); background:var(--soft); border:1px solid var(--border); }
     button:disabled { opacity:.55; cursor:wait; }
     .muted { color:var(--muted); font-size:12px; line-height:1.45; }
     .section-title { color:var(--muted); font-size:11px; font-weight:800; letter-spacing:.09em; text-transform:uppercase; margin:6px 0; }
-    #sessions { display:grid; gap:8px; overflow:auto; }
-    .session-item, .file-card { border:1px solid var(--border); background:var(--panel); border-radius:13px; padding:10px; cursor:pointer; }
+    #new-session { width:100%; }
+    #sessions { min-width:0; display:grid; gap:8px; overflow:auto; }
+    .session-item, .file-card { min-width:0; max-width:100%; border:1px solid var(--border); background:var(--panel); border-radius:13px; padding:10px; cursor:pointer; overflow:hidden; }
     .session-item.active { border-color:rgba(16,163,127,.7); background:var(--accent-soft); }
-    .session-row { display:flex; align-items:flex-start; justify-content:space-between; gap:8px; }
+    .session-row { min-width:0; display:grid; grid-template-columns:minmax(0,1fr) auto; align-items:flex-start; gap:8px; }
     .session-meta { min-width:0; flex:1; }
-    .session-actions { display:flex; gap:6px; opacity:.7; }
+    .session-actions { display:flex; flex-shrink:0; gap:6px; opacity:.7; }
     .session-item:hover .session-actions { opacity:1; }
     .icon-button { border:1px solid var(--border); border-radius:9px; padding:5px 7px; background:var(--soft); color:var(--muted); font-size:11px; line-height:1; }
     .icon-button:hover { color:var(--text); border-color:rgba(16,163,127,.55); }
@@ -72,21 +75,30 @@ HOME_PAGE = """
     .session-title, .file-name { font-weight:680; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
     .session-title-input { width:100%; border:1px solid var(--border); border-radius:10px; padding:7px 9px; background:var(--soft); color:var(--text); font:inherit; font-weight:680; }
     input[type=file] { width:100%; color:var(--muted); font-size:12px; }
-    main { display:grid; grid-template-rows:auto 1fr auto; min-width:0; max-height:100vh; }
+    main { display:grid; grid-template-rows:auto 1fr auto; min-width:0; max-width:100%; max-height:100vh; overflow:hidden; }
     header { padding:16px 24px; border-bottom:1px solid var(--border); background:rgba(11,15,25,.9); }
     h1 { margin:0; font-size:17px; }
     #status { margin-top:4px; color:var(--muted); font-size:13px; }
     #chat { overflow:auto; padding:26px; display:flex; flex-direction:column; gap:14px; }
-    .message { max-width:860px; padding:15px 17px; border:1px solid var(--border); border-radius:18px; background:var(--panel); line-height:1.58; white-space:pre-wrap; }
+    .message { max-width:min(860px,100%); overflow-wrap:anywhere; padding:15px 17px; border:1px solid var(--border); border-radius:18px; background:var(--panel); line-height:1.58; white-space:pre-wrap; }
     .message img { display:block; max-width:min(100%,520px); height:auto; margin-top:12px; border-radius:16px; border:1px solid var(--border); background:#fff; }
     .user { align-self:flex-end; background:var(--accent-soft); border-color:rgba(16,163,127,.36); }
     .assistant { align-self:flex-start; }
+    .process { align-self:flex-start; max-width:min(560px,100%); border:1px solid var(--border); border-radius:16px; background:rgba(21,29,46,.72); padding:12px 14px; color:var(--muted); }
+    .process-head { display:flex; align-items:center; justify-content:space-between; gap:12px; font-weight:760; color:var(--text); }
+    .process-toggle { color:var(--text); background:var(--soft); border:1px solid var(--border); padding:6px 9px; border-radius:9px; font-size:12px; }
+    .process-list { display:none; margin:10px 0 0; padding-left:18px; font-size:13px; line-height:1.55; }
+    .process.open .process-list { display:block; }
     .error { color:var(--danger); }
     footer { padding:16px 24px 22px; border-top:1px solid var(--border); background:rgba(11,15,25,.94); }
     .composer { border:1px solid var(--border); border-radius:16px; background:var(--panel); padding:12px; display:grid; gap:10px; }
     textarea { min-height:76px; resize:vertical; width:100%; border:0; outline:0; color:var(--text); background:transparent; font:inherit; }
     .composer-actions { display:flex; align-items:center; justify-content:space-between; gap:12px; }
-    @media (max-width:860px) { .shell{grid-template-columns:1fr} aside{border-right:0;border-bottom:1px solid var(--border)} main{max-height:none} }
+    @media (max-width:860px) {
+      .shell{grid-template-columns:1fr; overflow:auto}
+      aside{width:100%; border-right:0; border-bottom:1px solid var(--border)}
+      main{max-height:none}
+    }
   </style>
 </head>
 <body>
@@ -150,7 +162,7 @@ HOME_PAGE = """
     }
     function renderMessageHtml(text) {
       const escaped = escapeHtml(text || "");
-      return escaped.replace(/!\\[([^\\]]*)\\]\\((\\/assets\\/[A-Za-z0-9._\\/-]+)\\)/g, '<img src="$2" alt="$1" loading="lazy" />');
+      return escaped.replace(/!\\[([^\\]]*)\\]\\((\\/(?:assets|results)\\/[A-Za-z0-9._\\/-]+)\\)/g, '<img src="$2" alt="$1" loading="lazy" />');
     }
     function displayFileName(filename) {
       return String(filename || "").replace(/[.][^.]+$/, "");
@@ -162,6 +174,29 @@ HOME_PAGE = """
       else node.textContent = text;
       chatEl.appendChild(node);
       chatEl.scrollTop = chatEl.scrollHeight;
+    }
+    function addProcessMessage() {
+      const node = document.createElement("div");
+      node.className = "process";
+      node.innerHTML = '<div class="process-head"><span>Agent đang xử lý...</span><button class="process-toggle" type="button">Show process</button></div><ol class="process-list"></ol>';
+      const button = node.querySelector(".process-toggle");
+      button.onclick = () => {
+        node.classList.toggle("open");
+        button.textContent = node.classList.contains("open") ? "Hide process" : "Show process";
+      };
+      chatEl.appendChild(node);
+      chatEl.scrollTop = chatEl.scrollHeight;
+      return node;
+    }
+    function updateProcessMessage(node, steps = []) {
+      if (!node) return;
+      const list = node.querySelector(".process-list");
+      list.innerHTML = "";
+      for (const step of steps) {
+        const item = document.createElement("li");
+        item.textContent = step.message || String(step);
+        list.appendChild(item);
+      }
     }
     function upsertSessionTitle(message) {
       const session = sessions.find((item) => item.id === currentSessionId);
@@ -254,9 +289,10 @@ HOME_PAGE = """
       if (!response.ok) addMessage("assistant", data.message || "Upload lỗi.", "error"); inputEl.value = ""; await loadFiles();
     });
     async function readJsonSafely(response) { try { return await response.json(); } catch { return { status:"error", message: await response.text() }; } }
-    async function pollJob(jobId) {
+    async function pollJob(jobId, processNode) {
       for (let attempt = 0; attempt < 180; attempt++) {
         const response = await fetch(`/jobs/${jobId}`); const data = await readJsonSafely(response);
+        updateProcessMessage(processNode, data.process || []);
         if (!response.ok || data.status === "error") return data;
         if (data.status === "completed") return data.result;
         statusEl.textContent = "inprogess"; await new Promise((resolve) => setTimeout(resolve, 1000));
@@ -273,7 +309,9 @@ HOME_PAGE = """
         const response = await fetch("/chat", { method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({ message, file_ids:fileIds, actor_id:actorId, session_id:currentSessionId }) });
         const started = await readJsonSafely(response);
         if (!response.ok || started.status === "error") { addMessage("assistant", started.message || "Agent trả về lỗi.", "error"); return; }
-        const data = await pollJob(started.job_id);
+        const processNode = addProcessMessage();
+        updateProcessMessage(processNode, started.process || [{ message:"Đã nhận câu hỏi và đưa vào hàng đợi." }]);
+        const data = await pollJob(started.job_id, processNode);
         addMessage("assistant", data.response || data.message || JSON.stringify(data, null, 2), data.status === "error" ? "error" : "");
       } catch (error) { addMessage("assistant", `Không gọi được agent. Vui lòng thử lại. Chi tiết: ${error.message}`, "error"); messageEl.value = message; }
       finally { statusEl.textContent = "ready"; sendEl.disabled = false; messageEl.focus(); }
@@ -376,10 +414,19 @@ async def asset_route(request):
     return FileResponse(HOMEPAGE_RESULT_IMAGE)
 
 
+async def result_route(request):
+    filename = safe_filename(request.path_params["filename"])
+    path = RESULTS_DIR / filename
+    if not path.exists() or path.suffix.lower() != ".png":
+        return JSONResponse({"message": "Result not found"}, status_code=404)
+    return FileResponse(path)
+
+
 app.add_route("/", home_page, methods=["GET"])
 app.add_route("/uploads", list_uploads, methods=["GET"])
 app.add_route("/uploads", create_uploads, methods=["POST"])
 app.add_route("/assets/{filename}", asset_route, methods=["GET"])
+app.add_route("/results/{filename}", result_route, methods=["GET"])
 
 # Legacy Supabase connector. It is intentionally not used by default anymore:
 # set DATA_SOURCE=supabase if you want the agent to query Supabase instead of
@@ -712,6 +759,14 @@ def list_memory_events(actor_id: str, session_id: str) -> list[dict[str, str]]:
     return events
 
 
+def recent_session_memory(actor_id: str, session_id: str, limit: int = 20) -> list[dict[str, str]]:
+    try:
+        events = list_memory_events(actor_id, session_id)
+    except Exception:
+        return []
+    return events[-limit:]
+
+
 async def session_events_route(request) -> JSONResponse:
     session_id = request.path_params["session_id"]
     actor_id = request.query_params.get("actor_id") or MEMORY_ACTOR_ID
@@ -749,28 +804,226 @@ def answer_with_llm(message: str, context: dict[str, Any]) -> str:
     return completion.choices[0].message.content or ""
 
 
+def clean_assistant_markdown(answer: str) -> str:
+    cleaned_lines = []
+    for raw_line in answer.splitlines():
+        line = raw_line.strip()
+        if not line:
+            cleaned_lines.append("")
+            continue
+        if re.fullmatch(r"\|?[\s:\-|\+]+\|?", line):
+            continue
+        if line.startswith("#"):
+            line = line.lstrip("#").strip()
+        line = line.replace("**", "")
+        if "|" in line and line.count("|") >= 2:
+            cells = [cell.strip() for cell in line.strip("|").split("|") if cell.strip()]
+            if cells:
+                line = "- " + " — ".join(cells)
+        cleaned_lines.append(line)
+    return "\n".join(cleaned_lines).strip()
+
+
+HOME_CLICK_VALUE_POSITIONS = [
+    {"name": "Chuyển tiền", "x": 88, "y": 530},
+    {"name": "QR của tôi", "x": 296, "y": 530},
+    {"name": "Nạp/Rút", "x": 500, "y": 530},
+    {"name": "Ưu đãi", "x": 708, "y": 530},
+    {"name": "Hóa đơn", "x": 72, "y": 773},
+    {"name": "Điện thoại", "x": 282, "y": 773},
+    {"name": "Vé phim", "x": 492, "y": 773},
+    {"name": "Số dư sinh lời", "x": 708, "y": 773},
+    {"name": "Du lịch", "x": 72, "y": 971},
+    {"name": "Ngân hàng", "x": 282, "y": 971},
+    {"name": "Trả sau", "x": 492, "y": 971},
+    {"name": "Xem tất cả", "x": 708, "y": 971},
+    {"name": "Bảo hiểm xe máy", "x": 82, "y": 1246},
+    {"name": "Tiện ích", "x": 282, "y": 1246},
+    {"name": "Vé phim", "x": 488, "y": 1246},
+    {"name": "Ăn uống", "x": 704, "y": 1246},
+]
+
+
+def font_for_homepage_image(size: int) -> ImageFont.ImageFont:
+    candidates = [
+        "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+        "/System/Library/Fonts/Supplemental/Arial Bold.ttf",
+        "/Library/Fonts/Arial Bold.ttf",
+    ]
+    for path in candidates:
+        try:
+            return ImageFont.truetype(path, size)
+        except Exception:
+            continue
+    return ImageFont.load_default()
+
+
+def calculate_homepage_click_rates() -> list[dict[str, Any]]:
+    dataset = pyarrow_dataset.dataset(PARQUET_PATH, format="parquet")
+    table = dataset.to_table(columns=["event_id", "user_id", "app_profile_name"])
+    event_ids = table["event_id"].to_pylist()
+    user_ids = table["user_id"].to_pylist()
+    names = table["app_profile_name"].to_pylist()
+
+    home_users: set[str] = set()
+    clicked_by_service: dict[str, set[str]] = {}
+    for event_id, user_id, service_name in zip(event_ids, user_ids, names):
+        if not user_id:
+            continue
+        if event_id in {"AAAA.005", "01.1005.005"}:
+            home_users.add(user_id)
+        if event_id in {"AAAA.020", "01.1005.020"} and service_name:
+            clicked_by_service.setdefault(str(service_name), set()).add(user_id)
+
+    denominator = max(len(home_users), 1)
+    rows = []
+    for service_name, users in clicked_by_service.items():
+        clicked_users = len(users)
+        rows.append(
+            {
+                "service": service_name,
+                "clicked_users": clicked_users,
+                "home_users": len(home_users),
+                "click_rate_pct": round(clicked_users / denominator * 100, 2),
+            }
+        )
+    return sorted(rows, key=lambda row: row["click_rate_pct"], reverse=True)
+
+
+def is_red_annotation(pixel: tuple[int, int, int]) -> bool:
+    red, green, blue = pixel
+    return red > 120 and green < 235 and blue < 235 and red > green + 20 and red > blue + 20
+
+
+def scrub_old_homepage_red_values(image: Image.Image) -> None:
+    width, height = image.size
+    pixels = image.load()
+    for item in HOME_CLICK_VALUE_POSITIONS:
+        x = int(item["x"])
+        y = int(item["y"])
+        fill_color = (248, 252, 255) if y < 700 else (255, 255, 255)
+        arrow_left = max(0, x + 55)
+        arrow_top = max(0, y + 18)
+        arrow_right = min(width - 1, x + 100)
+        arrow_bottom = min(height - 1, y + 44)
+        for pixel_y in range(arrow_top, arrow_bottom + 1):
+            for pixel_x in range(arrow_left, arrow_right + 1):
+                pixels[pixel_x, pixel_y] = fill_color
+
+        left = max(0, x - 45)
+        top = max(0, y - 12)
+        right = min(width - 1, x + 115)
+        bottom = min(height - 1, y + 70)
+        for pixel_y in range(top, bottom + 1):
+            for pixel_x in range(left, right + 1):
+                if is_red_annotation(pixels[pixel_x, pixel_y]):
+                    pixels[pixel_x, pixel_y] = fill_color
+
+
+def render_homepage_click_rate_image(job_id: str, click_rates: list[dict[str, Any]]) -> str:
+    RESULTS_DIR.mkdir(parents=True, exist_ok=True)
+    rates_by_service = {row["service"]: row for row in click_rates}
+    image = Image.open(HOMEPAGE_RESULT_IMAGE).convert("RGB")
+    scrub_old_homepage_red_values(image)
+    draw = ImageDraw.Draw(image)
+    font = font_for_homepage_image(24)
+    red = (255, 0, 0)
+
+    for item in HOME_CLICK_VALUE_POSITIONS:
+        row = rates_by_service.get(item["name"])
+        value = f"{row['click_rate_pct']:.2f}%" if row else "0.00%"
+        x = int(item["x"])
+        y = int(item["y"])
+        draw.text((x, y), value, fill=red, font=font)
+
+    filename = f"homepage_click_rate_{safe_filename(job_id)}.png"
+    output_path = RESULTS_DIR / filename
+    image.save(output_path, "PNG")
+    return f"/results/{filename}"
+
+
+def homepage_click_rate_context(job_id: str) -> dict[str, Any]:
+    click_rates = calculate_homepage_click_rates()
+    image_url = render_homepage_click_rate_image(job_id, click_rates)
+    return {
+        "image_url": image_url,
+        "rows": click_rates[:30],
+        "sql": """WITH home_users AS (
+  SELECT COUNT(DISTINCT user_id) AS total_home_users
+  FROM event_log
+  WHERE event_id = 'AAAA.005'
+),
+icon_clicks AS (
+  SELECT app_profile_name, COUNT(DISTINCT user_id) AS clicked_users
+  FROM event_log
+  WHERE event_id = 'AAAA.020'
+  GROUP BY app_profile_name
+)
+SELECT app_profile_name,
+       clicked_users,
+       total_home_users,
+       ROUND(clicked_users * 100.0 / total_home_users, 2) AS click_rate_pct
+FROM icon_clicks
+CROSS JOIN home_users
+ORDER BY click_rate_pct DESC;""",
+        "python": """click_rates = calculate_homepage_click_rates()
+image_url = render_homepage_click_rate_image(job_id, click_rates)""",
+    }
+
+
 def is_homepage_click_rate_question(message: str) -> bool:
     normalized = message.lower()
     click_terms = ("click rate", "ctr", "tỉ lệ lượt click", "tỷ lệ lượt click", "ti le luot click", "ty le luot click")
-    home_terms = ("home page", "homepage", "trang chủ", "trang chu")
-    icon_terms = ("icon", "dịch vụ", "dich vu")
+    home_terms = ("home page", "homepage", "trang chủ", "trang chu", "trang home")
     return (
         any(term in normalized for term in click_terms)
         and any(term in normalized for term in home_terms)
-        and any(term in normalized for term in icon_terms)
     )
 
 
-def attach_homepage_result_image(answer: str, message: str) -> str:
+def should_load_default_dataset(message: str) -> bool:
+    normalized = message.lower()
+    memory_only_terms = ("hãy nhớ", "ghi nhớ", "nhớ logic", "remember", "save this logic", "lưu logic")
+    if any(term in normalized for term in memory_only_terms):
+        return False
+    data_terms = (
+        "analytics",
+        "csv",
+        "data",
+        "dataset",
+        "event",
+        "event_log",
+        "parquet",
+        "query",
+        "sql",
+        "table",
+        "bảng",
+        "bao nhiêu",
+        "click",
+        "dòng",
+        "dữ liệu",
+        "lọc",
+        "phân tích",
+        "thống kê",
+        "tính",
+        "tỉ lệ",
+        "tỷ lệ",
+        "user",
+    )
+    return is_homepage_click_rate_question(message) or any(term in normalized for term in data_terms)
+
+
+def attach_homepage_result_image(answer: str, message: str, image_url: str | None = None) -> str:
     if not is_homepage_click_rate_question(message):
         return answer
-    image_markdown = f"![Home Page click-rate result]({HOMEPAGE_RESULT_IMAGE_URL})"
-    if HOMEPAGE_RESULT_IMAGE_URL in answer:
+    result_url = image_url or HOMEPAGE_RESULT_IMAGE_URL
+    image_markdown = f"![Home Page click-rate result]({result_url})"
+    if result_url in answer:
         return answer
     return f"{answer.rstrip()}\n\n{image_markdown}"
 
 
-def analyze_payload(payload: dict, session_id: str | None = None) -> dict:
+def analyze_payload(payload: dict, session_id: str | None = None, progress=None) -> dict:
     try:
         message = payload.get("message", "Hãy phân tích dữ liệu.")
         actor_id = str(payload.get("actor_id") or MEMORY_ACTOR_ID)
@@ -778,24 +1031,59 @@ def analyze_payload(payload: dict, session_id: str | None = None) -> dict:
         file_ids = payload.get("file_ids") or []
         if not isinstance(file_ids, list):
             file_ids = []
+        if progress:
+            progress("Đã nhận câu hỏi và xác định session chat.")
+
+        memory_context = recent_session_memory(actor_id, effective_session_id)
+        if progress and memory_context:
+            progress(f"Đã tải {len(memory_context)} event memory gần nhất của session.")
 
         try:
             create_memory_event(actor_id, effective_session_id, "user", message)
+            if progress and memory_enabled():
+                progress("Đã lưu message mới vào memory của session.")
         except Exception:
             pass
 
-        file_context = load_file_context([str(file_id) for file_id in file_ids])
-        rows: list[dict[str, Any]] = []
-        if not file_context:
-            rows = fetch_rows(payload)
+        file_context = []
+        if progress:
+            progress("Đang kiểm tra file upload đi kèm.")
+        if file_ids:
+            file_context = load_file_context([str(file_id) for file_id in file_ids])
+            if progress:
+                progress(f"Đã đọc {len(file_context)} file upload làm context.")
 
+        rows: list[dict[str, Any]] = []
+        if not file_context and should_load_default_dataset(message) and not is_homepage_click_rate_question(message):
+            if progress:
+                progress("Câu hỏi cần dữ liệu; đang lấy sample rows từ Parquet local.")
+            rows = fetch_rows(payload)
+        elif progress and not file_context and not is_homepage_click_rate_question(message):
+            progress("Câu hỏi không yêu cầu dataset; bỏ qua bước đọc Parquet.")
+
+        homepage_context: dict[str, Any] | None = None
+        if is_homepage_click_rate_question(message):
+            if progress:
+                progress("Phát hiện câu hỏi CTR Trang chủ; đang tính tỉ lệ click từ Parquet.")
+            homepage_context = homepage_click_rate_context(effective_session_id)
+            if progress:
+                progress("Đã render ảnh kết quả mới với value đỏ được cập nhật.")
+
+        if progress:
+            progress("Đang gọi model để soạn câu trả lời.")
         answer = answer_with_llm(
             message,
             {
                 "uploaded_files": file_context,
-                "result_assets": {
-                    "homepage_click_rate_image": HOMEPAGE_RESULT_IMAGE_URL,
+                "session_memory": {
+                    "scope": "same_actor_same_session",
+                    "recent_events": memory_context,
+                    "instruction": "Use user-provided data logic from this session when relevant. If newer user logic conflicts with older logic, prefer the newer instruction.",
                 },
+                "result_assets": {
+                    "homepage_click_rate_image": homepage_context["image_url"] if homepage_context else HOMEPAGE_RESULT_IMAGE_URL,
+                },
+                "homepage_click_rate": homepage_context,
                 "data_source": {
                     "type": DATA_SOURCE,
                     "parquet": parquet_summary(),
@@ -808,7 +1096,14 @@ def analyze_payload(payload: dict, session_id: str | None = None) -> dict:
                 },
             },
         )
-        answer = attach_homepage_result_image(answer, message)
+        answer = clean_assistant_markdown(answer)
+        answer = attach_homepage_result_image(
+            answer,
+            message,
+            homepage_context["image_url"] if homepage_context else None,
+        )
+        if progress:
+            progress("Hoàn tất câu trả lời.")
         try:
             create_memory_event(actor_id, effective_session_id, "assistant", answer)
         except Exception:
@@ -841,16 +1136,33 @@ def set_job(job_id: str, data: dict[str, Any]) -> None:
         JOBS[job_id] = data
 
 
+def update_job(job_id: str, data: dict[str, Any]) -> None:
+    with JOBS_LOCK:
+        current = JOBS.get(job_id, {})
+        current.update(data)
+        JOBS[job_id] = current
+
+
+def add_job_process(job_id: str, message: str) -> None:
+    with JOBS_LOCK:
+        current = JOBS.get(job_id, {})
+        process = list(current.get("process") or [])
+        process.append({"time": datetime.now().isoformat(), "message": message})
+        current["process"] = process
+        JOBS[job_id] = current
+
+
 def get_job(job_id: str) -> dict[str, Any] | None:
     with JOBS_LOCK:
         return JOBS.get(job_id)
 
 
 def run_chat_job(job_id: str, payload: dict[str, Any]) -> None:
-    set_job(job_id, {"status": "inprogess", "created_at": datetime.now().isoformat()})
-    result = analyze_payload(payload, session_id=job_id)
+    update_job(job_id, {"status": "inprogess", "updated_at": datetime.now().isoformat()})
+    add_job_process(job_id, "Bắt đầu xử lý yêu cầu.")
+    result = analyze_payload(payload, session_id=job_id, progress=lambda message: add_job_process(job_id, message))
     status = "completed" if result.get("status") == "success" else "error"
-    set_job(
+    update_job(
         job_id,
         {
             "status": status,
@@ -866,9 +1178,16 @@ async def chat_route(request) -> JSONResponse:
     except Exception:
         return JSONResponse({"status": "error", "message": "Invalid JSON payload"}, status_code=400)
     job_id = str(uuid.uuid4())
-    set_job(job_id, {"status": "queued", "created_at": datetime.now().isoformat()})
+    set_job(
+        job_id,
+        {
+            "status": "queued",
+            "created_at": datetime.now().isoformat(),
+            "process": [{"time": datetime.now().isoformat(), "message": "Đã nhận request chat."}],
+        },
+    )
     JOB_EXECUTOR.submit(run_chat_job, job_id, payload)
-    return JSONResponse({"status": "queued", "job_id": job_id}, status_code=202)
+    return JSONResponse({"status": "queued", "job_id": job_id, "process": get_job(job_id).get("process", [])}, status_code=202)
 
 
 async def job_route(request) -> JSONResponse:
