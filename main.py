@@ -843,6 +843,10 @@ HOME_CLICK_VALUE_POSITIONS = [
     {"name": "Ăn uống", "x": 704, "y": 1246},
 ]
 
+HOME_CLICK_SERVICE_ALIASES = {
+    "Xem tất cả": ("Xem tất cả", "Tất cả"),
+}
+
 
 def font_for_homepage_image(size: int) -> ImageFont.ImageFont:
     candidates = [
@@ -858,17 +862,53 @@ def font_for_homepage_image(size: int) -> ImageFont.ImageFont:
     return ImageFont.load_default()
 
 
-def calculate_homepage_click_rates() -> list[dict[str, Any]]:
+def extract_ymd_range(message: str) -> tuple[int | None, int | None, str]:
+    normalized = message.lower()
+    month_match = re.search(r"(?:tháng|thang|month)\s*(\d{1,2})\s*[/\-\s]\s*(20\d{2})", normalized)
+    if month_match:
+        month = int(month_match.group(1))
+        year = int(month_match.group(2))
+        if 1 <= month <= 12:
+            next_month = datetime(year + (month // 12), (month % 12) + 1, 1)
+            end_day = (next_month - datetime.resolution).day
+            return year * 10000 + month * 100 + 1, year * 10000 + month * 100 + end_day, f"tháng {month:02d}/{year}"
+
+    compact_match = re.search(r"\b(20\d{2})(\d{2})\b", normalized)
+    if compact_match:
+        year = int(compact_match.group(1))
+        month = int(compact_match.group(2))
+        if 1 <= month <= 12:
+            next_month = datetime(year + (month // 12), (month % 12) + 1, 1)
+            end_day = (next_month - datetime.resolution).day
+            return year * 10000 + month * 100 + 1, year * 10000 + month * 100 + end_day, f"tháng {month:02d}/{year}"
+
+    return None, None, "toàn bộ dữ liệu"
+
+
+def ymd_in_range(value: Any, start_ymd: int | None, end_ymd: int | None) -> bool:
+    if start_ymd is None or end_ymd is None:
+        return True
+    try:
+        ymd_value = int(value)
+    except Exception:
+        return False
+    return start_ymd <= ymd_value <= end_ymd
+
+
+def calculate_homepage_click_rates(start_ymd: int | None = None, end_ymd: int | None = None) -> list[dict[str, Any]]:
     dataset = pyarrow_dataset.dataset(PARQUET_PATH, format="parquet")
-    table = dataset.to_table(columns=["event_id", "user_id", "app_profile_name"])
+    table = dataset.to_table(columns=["event_id", "user_id", "app_profile_name", "ymd"])
     event_ids = table["event_id"].to_pylist()
     user_ids = table["user_id"].to_pylist()
     names = table["app_profile_name"].to_pylist()
+    ymd_values = table["ymd"].to_pylist()
 
     home_users: set[str] = set()
     clicked_by_service: dict[str, set[str]] = {}
-    for event_id, user_id, service_name in zip(event_ids, user_ids, names):
+    for event_id, user_id, service_name, ymd_value in zip(event_ids, user_ids, names, ymd_values):
         if not user_id:
+            continue
+        if not ymd_in_range(ymd_value, start_ymd, end_ymd):
             continue
         if event_id in {"AAAA.005", "01.1005.005"}:
             home_users.add(user_id)
@@ -926,11 +966,12 @@ def render_homepage_click_rate_image(job_id: str, click_rates: list[dict[str, An
     image = Image.open(HOMEPAGE_RESULT_IMAGE).convert("RGB")
     scrub_old_homepage_red_values(image)
     draw = ImageDraw.Draw(image)
-    font = font_for_homepage_image(24)
+    font = font_for_homepage_image(26)
     red = (255, 0, 0)
 
     for item in HOME_CLICK_VALUE_POSITIONS:
-        row = rates_by_service.get(item["name"])
+        aliases = HOME_CLICK_SERVICE_ALIASES.get(item["name"], (item["name"],))
+        row = next((rates_by_service.get(alias) for alias in aliases if rates_by_service.get(alias)), None)
         value = f"{row['click_rate_pct']:.2f}%" if row else "0.00%"
         x = int(item["x"])
         y = int(item["y"])
@@ -942,21 +983,28 @@ def render_homepage_click_rate_image(job_id: str, click_rates: list[dict[str, An
     return f"/results/{filename}"
 
 
-def homepage_click_rate_context(job_id: str) -> dict[str, Any]:
-    click_rates = calculate_homepage_click_rates()
+def homepage_click_rate_context(job_id: str, message: str) -> dict[str, Any]:
+    start_ymd, end_ymd, period_label = extract_ymd_range(message)
+    click_rates = calculate_homepage_click_rates(start_ymd, end_ymd)
     image_url = render_homepage_click_rate_image(job_id, click_rates)
+    date_filter_sql = ""
+    if start_ymd and end_ymd:
+        date_filter_sql = f"\n    AND ymd BETWEEN {start_ymd} AND {end_ymd}"
     return {
         "image_url": image_url,
+        "period": period_label,
+        "start_ymd": start_ymd,
+        "end_ymd": end_ymd,
         "rows": click_rates[:30],
-        "sql": """WITH home_users AS (
+        "sql": f"""WITH home_users AS (
   SELECT COUNT(DISTINCT user_id) AS total_home_users
   FROM event_log
-  WHERE event_id = 'AAAA.005'
+  WHERE event_id = 'AAAA.005'{date_filter_sql}
 ),
 icon_clicks AS (
   SELECT app_profile_name, COUNT(DISTINCT user_id) AS clicked_users
   FROM event_log
-  WHERE event_id = 'AAAA.020'
+  WHERE event_id = 'AAAA.020'{date_filter_sql}
   GROUP BY app_profile_name
 )
 SELECT app_profile_name,
@@ -966,7 +1014,7 @@ SELECT app_profile_name,
 FROM icon_clicks
 CROSS JOIN home_users
 ORDER BY click_rate_pct DESC;""",
-        "python": """click_rates = calculate_homepage_click_rates()
+        "python": f"""click_rates = calculate_homepage_click_rates(start_ymd={start_ymd!r}, end_ymd={end_ymd!r})
 image_url = render_homepage_click_rate_image(job_id, click_rates)""",
     }
 
@@ -1017,6 +1065,7 @@ def attach_homepage_result_image(answer: str, message: str, image_url: str | Non
     if not is_homepage_click_rate_question(message):
         return answer
     result_url = image_url or HOMEPAGE_RESULT_IMAGE_URL
+    answer = re.sub(r"!\\[[^\\]]*\\]\\(/(?:assets|results)/homepage[^)]*\\.png\\)", "", answer).strip()
     image_markdown = f"![Home Page click-rate result]({result_url})"
     if result_url in answer:
         return answer
@@ -1065,7 +1114,7 @@ def analyze_payload(payload: dict, session_id: str | None = None, progress=None)
         if is_homepage_click_rate_question(message):
             if progress:
                 progress("Phát hiện câu hỏi CTR Trang chủ; đang tính tỉ lệ click từ Parquet.")
-            homepage_context = homepage_click_rate_context(effective_session_id)
+            homepage_context = homepage_click_rate_context(effective_session_id, message)
             if progress:
                 progress("Đã render ảnh kết quả mới với value đỏ được cập nhật.")
 
