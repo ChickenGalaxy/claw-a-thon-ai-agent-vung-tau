@@ -332,6 +332,7 @@ Chỉ áp dụng phần này khi user hỏi trực tiếp về click rate / tỉ
 - Kết quả phần trăm phải được map vào đúng icon dịch vụ tương ứng.
 - Hình kết quả chỉ được show khi câu hỏi liên quan tới tỉ lệ lượt click trên Trang chủ. Khi app cung cấp ảnh kết quả động trong context, dùng đúng URL `/results/...png` đó; không dùng lại ảnh gốc `/assets/homepage_reference_result.png`.
 - Khi trả kết quả bằng hình, bắt buộc hình phải là phiên bản đã cập nhật các value màu đỏ theo phần trăm tính toán được, tương ứng với từng icon dịch vụ. Không được giữ nguyên số placeholder nếu các số đó không khớp output.
+- Không được giả định hoặc hardcode phần trăm trong hình. Phần trăm phải lấy từ kết quả query/runtime context, sau đó map vào template theo service/icon tương ứng.
 - Luôn hiển thị SQL đã dùng hoặc SQL đề xuất dùng để phân tích.
 - Luôn hiển thị Python query / Python snippet đã dùng hoặc đề xuất dùng để phân tích.
 - User có thể hỏi tiếp về logic của SQL hoặc Python; khi đó hãy giải thích rõ từng bước, dùng ngôn ngữ dễ hiểu.

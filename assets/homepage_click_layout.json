@@ -1,0 +1,23 @@
+{
+  "template": "homepage_reference_result.png",
+  "font_size": 26,
+  "text_color": [255, 0, 0],
+  "items": [
+    { "label": "Chuyển tiền", "aliases": ["Chuyển tiền"], "x": 88, "y": 530 },
+    { "label": "QR của tôi", "aliases": ["QR của tôi"], "x": 296, "y": 530 },
+    { "label": "Nạp/Rút", "aliases": ["Nạp/Rút"], "x": 500, "y": 530 },
+    { "label": "Ưu đãi", "aliases": ["Ưu đãi"], "x": 708, "y": 530 },
+    { "label": "Hóa đơn", "aliases": ["Hóa đơn"], "x": 72, "y": 773 },
+    { "label": "Điện thoại", "aliases": ["Điện thoại"], "x": 282, "y": 773 },
+    { "label": "Vé phim", "aliases": ["Vé phim"], "x": 492, "y": 773 },
+    { "label": "Số dư sinh lời", "aliases": ["Số dư sinh lời"], "x": 708, "y": 773 },
+    { "label": "Du lịch", "aliases": ["Du lịch"], "x": 72, "y": 971 },
+    { "label": "Ngân hàng", "aliases": ["Ngân hàng"], "x": 282, "y": 971 },
+    { "label": "Trả sau", "aliases": ["Trả sau", "Tài khoản trả sau"], "x": 492, "y": 971 },
+    { "label": "Xem tất cả", "aliases": ["Xem tất cả", "Tất cả"], "x": 708, "y": 971 },
+    { "label": "Bảo hiểm xe máy", "aliases": ["Bảo hiểm xe máy"], "x": 82, "y": 1246 },
+    { "label": "Tiện ích", "aliases": ["Tiện ích"], "x": 282, "y": 1246 },
+    { "label": "Vé phim", "aliases": ["Vé phim"], "x": 488, "y": 1246 },
+    { "label": "Ăn uống", "aliases": ["Ăn uống"], "x": 704, "y": 1246 }
+  ]
+}

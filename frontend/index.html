@@ -1,0 +1,284 @@
+
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Ai agent analytics data product home</title>
+  <style>
+    :root { --bg:#0b0f19; --panel:#111827; --soft:#151d2e; --border:#253044; --text:#e5e7eb; --muted:#8b96aa; --accent:#10a37f; --accent-soft:rgba(16,163,127,.16); --danger:#fb7185; }
+    * { box-sizing: border-box; }
+    body { margin:0; min-height:100vh; background:var(--bg); color:var(--text); font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; }
+    .shell { display:grid; grid-template-columns:300px minmax(0,1fr); min-height:100vh; max-width:100vw; overflow:hidden; }
+    aside { min-width:0; width:300px; border-right:1px solid var(--border); background:#080c14; padding:16px; display:grid; grid-template-rows:auto auto minmax(0,1fr) auto; gap:14px; overflow:hidden; }
+    .brand { min-width:0; font-weight:760; line-height:1.25; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .panel { border:1px solid var(--border); background:var(--panel); border-radius:16px; padding:12px; }
+    button { border:0; border-radius:12px; padding:10px 12px; color:#06130f; background:var(--accent); font-weight:760; cursor:pointer; }
+    button.secondary { color:var(--text); background:var(--soft); border:1px solid var(--border); }
+    button:disabled { opacity:.55; cursor:wait; }
+    .muted { color:var(--muted); font-size:12px; line-height:1.45; }
+    .section-title { color:var(--muted); font-size:11px; font-weight:800; letter-spacing:.09em; text-transform:uppercase; margin:6px 0; }
+    #new-session { width:100%; }
+    #sessions { min-width:0; display:grid; gap:8px; overflow:auto; }
+    .session-item, .file-card { min-width:0; max-width:100%; border:1px solid var(--border); background:var(--panel); border-radius:13px; padding:10px; cursor:pointer; overflow:hidden; }
+    .session-item.active { border-color:rgba(16,163,127,.7); background:var(--accent-soft); }
+    .session-row { min-width:0; display:grid; grid-template-columns:minmax(0,1fr) auto; align-items:flex-start; gap:8px; }
+    .session-meta { min-width:0; flex:1; }
+    .session-actions { display:flex; flex-shrink:0; gap:6px; opacity:.7; }
+    .session-item:hover .session-actions { opacity:1; }
+    .icon-button { border:1px solid var(--border); border-radius:9px; padding:5px 7px; background:var(--soft); color:var(--muted); font-size:11px; line-height:1; }
+    .icon-button:hover { color:var(--text); border-color:rgba(16,163,127,.55); }
+    .icon-button.danger:hover { color:var(--danger); border-color:rgba(251,113,133,.6); }
+    .session-title, .file-name { font-weight:680; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .session-title-input { width:100%; border:1px solid var(--border); border-radius:10px; padding:7px 9px; background:var(--soft); color:var(--text); font:inherit; font-weight:680; }
+    input[type=file] { width:100%; color:var(--muted); font-size:12px; }
+    main { display:grid; grid-template-rows:auto 1fr auto; min-width:0; max-width:100%; max-height:100vh; overflow:hidden; }
+    header { padding:16px 24px; border-bottom:1px solid var(--border); background:rgba(11,15,25,.9); }
+    h1 { margin:0; font-size:17px; }
+    #status { margin-top:4px; color:var(--muted); font-size:13px; }
+    #chat { overflow:auto; padding:26px; display:flex; flex-direction:column; gap:14px; }
+    .message { max-width:min(860px,100%); overflow-wrap:anywhere; padding:15px 17px; border:1px solid var(--border); border-radius:18px; background:var(--panel); line-height:1.58; white-space:pre-wrap; }
+    .message img { display:block; max-width:min(100%,520px); height:auto; margin-top:12px; border-radius:16px; border:1px solid var(--border); background:#fff; }
+    .user { align-self:flex-end; background:var(--accent-soft); border-color:rgba(16,163,127,.36); }
+    .assistant { align-self:flex-start; }
+    .process { align-self:flex-start; max-width:min(560px,100%); border:1px solid var(--border); border-radius:16px; background:rgba(21,29,46,.72); padding:12px 14px; color:var(--muted); }
+    .process-head { display:flex; align-items:center; justify-content:space-between; gap:12px; font-weight:760; color:var(--text); }
+    .process-toggle { color:var(--text); background:var(--soft); border:1px solid var(--border); padding:6px 9px; border-radius:9px; font-size:12px; }
+    .process-list { display:none; margin:10px 0 0; padding-left:18px; font-size:13px; line-height:1.55; }
+    .process.open .process-list { display:block; }
+    .error { color:var(--danger); }
+    footer { padding:16px 24px 22px; border-top:1px solid var(--border); background:rgba(11,15,25,.94); }
+    .composer { border:1px solid var(--border); border-radius:16px; background:var(--panel); padding:12px; display:grid; gap:10px; }
+    textarea { min-height:76px; resize:vertical; width:100%; border:0; outline:0; color:var(--text); background:transparent; font:inherit; }
+    .composer-actions { display:flex; align-items:center; justify-content:space-between; gap:12px; }
+    @media (max-width:860px) {
+      .shell{grid-template-columns:1fr; overflow:auto}
+      aside{width:100%; border-right:0; border-bottom:1px solid var(--border)}
+      main{max-height:none}
+    }
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <aside>
+      <div class="brand">Ai agent analytics data product home</div>
+      <button id="new-session">+ New chat</button>
+      <div>
+        <div class="section-title">Sessions</div>
+        <div id="sessions"></div>
+      </div>
+      <div>
+        <div class="section-title">Files</div>
+        <div class="panel">
+          <input id="file-input" type="file" multiple accept=".csv,.pdf,.txt,.json,.md,text/*,application/pdf" />
+        </div>
+      </div>
+    </aside>
+    <main>
+      <header>
+        <h1 id="chat-title">Ai agent analytics data product home</h1>
+        <div id="status">ready</div>
+      </header>
+      <section id="chat"></section>
+      <footer>
+        <form id="composer" class="composer">
+          <textarea id="message" placeholder="Hỏi agent phân tích dữ liệu..."></textarea>
+          <div class="composer-actions">
+            <span class="muted">Enter để gửi · Shift+Enter để xuống dòng</span>
+            <div>
+              <button id="send" type="submit">Send</button>
+            </div>
+          </div>
+        </form>
+      </footer>
+    </main>
+  </div>
+  <script>
+    const filesEl = document.getElementById("files");
+    const sessionsEl = document.getElementById("sessions");
+    const chatEl = document.getElementById("chat");
+    const statusEl = document.getElementById("status");
+    const titleEl = document.getElementById("chat-title");
+    const inputEl = document.getElementById("file-input");
+    const formEl = document.getElementById("composer");
+    const sendEl = document.getElementById("send");
+    const messageEl = document.getElementById("message");
+    const actorId = localStorage.getItem("agent_actor_id") || crypto.randomUUID();
+    localStorage.setItem("agent_actor_id", actorId);
+    let sessions = JSON.parse(localStorage.getItem("agent_sessions") || "[]");
+    let currentSessionId = localStorage.getItem("agent_current_session") || null;
+
+    function persistSessions() { localStorage.setItem("agent_sessions", JSON.stringify(sessions)); }
+    function escapeHtml(value) {
+      return String(value)
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll('"', "&quot;")
+        .replaceAll("'", "&#039;");
+    }
+    function renderMessageHtml(text) {
+      const escaped = escapeHtml(text || "");
+      return escaped.replace(/!\[([^\]]*)\]\((\/(?:assets|results)\/[A-Za-z0-9._\/-]+)\)/g, (_, alt, src) => {
+        const cacheSafeSrc = src.startsWith("/results/") ? `${src}?_t=${Date.now()}` : src;
+        return `<img src="${cacheSafeSrc}" alt="${alt}" loading="lazy" />`;
+      });
+    }
+    function displayFileName(filename) {
+      return String(filename || "").replace(/[.][^.]+$/, "");
+    }
+    function addMessage(role, text, className = "") {
+      const node = document.createElement("div");
+      node.className = `message ${role} ${className}`;
+      if (role === "assistant") node.innerHTML = renderMessageHtml(text);
+      else node.textContent = text;
+      chatEl.appendChild(node);
+      chatEl.scrollTop = chatEl.scrollHeight;
+    }
+    function addProcessMessage() {
+      const node = document.createElement("div");
+      node.className = "process";
+      node.innerHTML = '<div class="process-head"><span>Agent đang xử lý...</span><button class="process-toggle" type="button">Show process</button></div><ol class="process-list"></ol>';
+      const button = node.querySelector(".process-toggle");
+      button.onclick = () => {
+        node.classList.toggle("open");
+        button.textContent = node.classList.contains("open") ? "Hide process" : "Show process";
+      };
+      chatEl.appendChild(node);
+      chatEl.scrollTop = chatEl.scrollHeight;
+      return node;
+    }
+    function updateProcessMessage(node, steps = []) {
+      if (!node) return;
+      const list = node.querySelector(".process-list");
+      list.innerHTML = "";
+      for (const step of steps) {
+        const item = document.createElement("li");
+        item.textContent = step.message || String(step);
+        list.appendChild(item);
+      }
+    }
+    function upsertSessionTitle(message) {
+      const session = sessions.find((item) => item.id === currentSessionId);
+      if (session && session.title === "New chat") {
+        session.title = message.slice(0, 42) || "New chat";
+        persistSessions(); renderSessions();
+      }
+    }
+    function createSession() {
+      const session = { id: crypto.randomUUID(), title: "New chat", createdAt: new Date().toISOString() };
+      sessions.unshift(session); currentSessionId = session.id;
+      localStorage.setItem("agent_current_session", currentSessionId); persistSessions(); renderSessions(); loadSession(currentSessionId, true);
+    }
+    function renderSessions() {
+      sessionsEl.innerHTML = "";
+      for (const session of sessions) {
+        const node = document.createElement("div");
+        node.className = `session-item ${session.id === currentSessionId ? "active" : ""}`;
+        node.innerHTML = `
+          <div class="session-row">
+            <div class="session-meta">
+              <div class="session-title">${escapeHtml(session.title)}</div>
+              <div class="muted">${new Date(session.createdAt).toLocaleString()}</div>
+            </div>
+            <div class="session-actions">
+              <button class="icon-button rename-session" type="button" title="Đổi tên">Sửa</button>
+              <button class="icon-button danger delete-session" type="button" title="Xoá">Xoá</button>
+            </div>
+          </div>`;
+        node.onclick = () => { currentSessionId = session.id; localStorage.setItem("agent_current_session", currentSessionId); renderSessions(); loadSession(currentSessionId); };
+        node.ondblclick = () => renameSession(session.id, node);
+        node.querySelector(".rename-session").onclick = (event) => { event.stopPropagation(); renameSession(session.id, node); };
+        node.querySelector(".delete-session").onclick = (event) => { event.stopPropagation(); deleteSession(session.id); };
+        sessionsEl.appendChild(node);
+      }
+    }
+    function renameSession(sessionId, node) {
+      const session = sessions.find((item) => item.id === sessionId);
+      if (!session) return;
+      const input = document.createElement("input");
+      input.className = "session-title-input";
+      input.value = session.title;
+      node.innerHTML = "";
+      node.appendChild(input);
+      input.focus(); input.select();
+      function save() {
+        const title = input.value.trim();
+        if (title) session.title = title;
+        persistSessions(); renderSessions();
+        if (sessionId === currentSessionId) titleEl.textContent = session.title;
+      }
+      input.onblur = save;
+      input.onkeydown = (event) => {
+        if (event.key === "Enter") { event.preventDefault(); input.blur(); }
+        if (event.key === "Escape") renderSessions();
+      };
+    }
+    function deleteSession(sessionId) {
+      sessions = sessions.filter((item) => item.id !== sessionId);
+      if (currentSessionId === sessionId) {
+        currentSessionId = sessions[0]?.id || null;
+        if (currentSessionId) localStorage.setItem("agent_current_session", currentSessionId);
+        else localStorage.removeItem("agent_current_session");
+      }
+      persistSessions();
+      if (!sessions.length) createSession();
+      else { renderSessions(); loadSession(currentSessionId); }
+    }
+    async function loadSession(sessionId, isNew = false) {
+      titleEl.textContent = sessions.find((item) => item.id === sessionId)?.title || "Ai agent analytics data product home";
+      chatEl.innerHTML = "";
+      if (isNew) addMessage("assistant", "tôi có thể giúp gì được cho bạn");
+      try {
+        const response = await fetch(`/sessions/${sessionId}/events?actor_id=${encodeURIComponent(actorId)}`);
+        const data = await response.json();
+        if (data.events?.length) {
+          chatEl.innerHTML = "";
+          for (const event of data.events) addMessage(event.role === "user" ? "user" : "assistant", event.message || "");
+        } else if (!chatEl.innerText.trim()) addMessage("assistant", "tôi có thể giúp gì được cho bạn");
+      } catch { if (!chatEl.innerText.trim()) addMessage("assistant", "tôi có thể giúp gì được cho bạn"); }
+    }
+    async function loadFiles() {
+      return;
+    }
+    inputEl.addEventListener("change", async () => {
+      if (!inputEl.files.length) return; statusEl.textContent = "uploading";
+      const formData = new FormData(); for (const file of inputEl.files) formData.append("files", file);
+      const response = await fetch("/uploads", { method: "POST", body: formData });
+      const data = await response.json(); statusEl.textContent = response.ok ? "ready" : "upload failed";
+      if (!response.ok) addMessage("assistant", data.message || "Upload lỗi.", "error"); inputEl.value = ""; await loadFiles();
+    });
+    async function readJsonSafely(response) { try { return await response.json(); } catch { return { status:"error", message: await response.text() }; } }
+    async function pollJob(jobId, processNode) {
+      for (let attempt = 0; attempt < 180; attempt++) {
+        const response = await fetch(`/jobs/${jobId}`); const data = await readJsonSafely(response);
+        updateProcessMessage(processNode, data.process || []);
+        if (!response.ok || data.status === "error") return data;
+        if (data.status === "completed") return data.result;
+        statusEl.textContent = "inprogess"; await new Promise((resolve) => setTimeout(resolve, 1000));
+      }
+      return { status:"error", message:"Agent analysis timed out. Please try again." };
+    }
+    messageEl.addEventListener("keydown", (event) => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); formEl.requestSubmit(); } });
+    formEl.addEventListener("submit", async (event) => {
+      event.preventDefault(); if (!currentSessionId) createSession();
+      const message = messageEl.value.trim(); if (!message || sendEl.disabled) return;
+      const fileIds = [];
+      addMessage("user", message); upsertSessionTitle(message); messageEl.value = ""; statusEl.textContent = "inprogess"; sendEl.disabled = true;
+      try {
+        const response = await fetch("/chat", { method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({ message, file_ids:fileIds, actor_id:actorId, session_id:currentSessionId }) });
+        const started = await readJsonSafely(response);
+        if (!response.ok || started.status === "error") { addMessage("assistant", started.message || "Agent trả về lỗi.", "error"); return; }
+        const processNode = addProcessMessage();
+        updateProcessMessage(processNode, started.process || [{ message:"Đã nhận câu hỏi và đưa vào hàng đợi." }]);
+        const data = await pollJob(started.job_id, processNode);
+        addMessage("assistant", data.response || data.message || JSON.stringify(data, null, 2), data.status === "error" ? "error" : "");
+      } catch (error) { addMessage("assistant", `Không gọi được agent. Vui lòng thử lại. Chi tiết: ${error.message}`, "error"); messageEl.value = message; }
+      finally { statusEl.textContent = "ready"; sendEl.disabled = false; messageEl.focus(); }
+    });
+    document.getElementById("new-session").onclick = createSession;
+    if (!sessions.length || !currentSessionId) createSession(); else { renderSessions(); loadSession(currentSessionId); }
+    loadFiles(); messageEl.focus();
+  </script>
+</body>
+</html>
