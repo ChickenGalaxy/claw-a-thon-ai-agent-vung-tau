@@ -1,3 +1,12 @@
+# ============================================================================ #
+# [DISABLED MODULE] Sinh HÌNH % CTR cho từng sản phẩm trên màn hình Home.
+# Tạm thời KHÔNG dùng nữa — không module nào import file này.
+# Nó phụ thuộc các config ảnh đã được comment trong app/config.py
+# (ASSET_DIR, RESULTS_DIR, HOMEPAGE_RESULT_IMAGE, HOMEPAGE_LAYOUT_PATH,
+#  HOMEPAGE_RESULT_IMAGE_URL). Muốn bật lại tính năng hình: khôi phục các
+# config đó, mở lại import + khối homepage_context trong app/agent.py,
+# và 2 route /assets, /results trong app/routes.py.
+# ============================================================================ #
 import json
 import re
 from datetime import datetime

@@ -5,13 +5,18 @@ from pathlib import Path
 from starlette.responses import FileResponse, HTMLResponse, JSONResponse
 
 from .agent import get_job, run_chat_job, set_job
-from .config import FRONTEND_INDEX, HOMEPAGE_RESULT_IMAGE, JOB_EXECUTOR, MAX_UPLOAD_BYTES, MEMORY_ACTOR_ID, RESULTS_DIR, UPLOAD_DIR
+# [DISABLED] HOMEPAGE_RESULT_IMAGE, RESULTS_DIR chỉ phục vụ output ảnh % Home (đã tắt).
+from .config import FRONTEND_INDEX, JOB_EXECUTOR, MAX_UPLOAD_BYTES, MEMORY_ACTOR_ID, UPLOAD_DIR
 from .memory import list_memory_events
 from .storage import load_upload_index, register_upload, safe_filename, save_upload_index
 
 
 async def home_page(request) -> HTMLResponse:
     return HTMLResponse(FRONTEND_INDEX.read_text(encoding="utf-8"))
+
+
+async def health_route(request) -> JSONResponse:
+    return JSONResponse({"status": "Healthy"})
 
 
 async def list_uploads(request) -> JSONResponse:
@@ -40,19 +45,20 @@ async def create_uploads(request) -> JSONResponse:
     return JSONResponse({"files": created})
 
 
-async def asset_route(request):
-    filename = safe_filename(request.path_params["filename"])
-    if filename != HOMEPAGE_RESULT_IMAGE.name or not HOMEPAGE_RESULT_IMAGE.exists():
-        return JSONResponse({"message": "Asset not found"}, status_code=404)
-    return FileResponse(HOMEPAGE_RESULT_IMAGE)
-
-
-async def result_route(request):
-    filename = safe_filename(request.path_params["filename"])
-    path = RESULTS_DIR / filename
-    if not path.exists() or path.suffix.lower() != ".png":
-        return JSONResponse({"message": "Result not found"}, status_code=404)
-    return FileResponse(path)
+# [DISABLED] Route phục vụ ảnh % Home Page — tạm thời bỏ tính năng output hình.
+# async def asset_route(request):
+#     filename = safe_filename(request.path_params["filename"])
+#     if filename != HOMEPAGE_RESULT_IMAGE.name or not HOMEPAGE_RESULT_IMAGE.exists():
+#         return JSONResponse({"message": "Asset not found"}, status_code=404)
+#     return FileResponse(HOMEPAGE_RESULT_IMAGE)
+#
+#
+# async def result_route(request):
+#     filename = safe_filename(request.path_params["filename"])
+#     path = RESULTS_DIR / filename
+#     if not path.exists() or path.suffix.lower() != ".png":
+#         return JSONResponse({"message": "Result not found"}, status_code=404)
+#     return FileResponse(path)
 
 
 async def session_events_route(request) -> JSONResponse:
@@ -91,11 +97,13 @@ async def job_route(request) -> JSONResponse:
 
 
 def register_routes(app) -> None:
+    app.add_route("/health", health_route, methods=["GET"])
     app.add_route("/", home_page, methods=["GET"])
     app.add_route("/uploads", list_uploads, methods=["GET"])
     app.add_route("/uploads", create_uploads, methods=["POST"])
-    app.add_route("/assets/{filename}", asset_route, methods=["GET"])
-    app.add_route("/results/{filename}", result_route, methods=["GET"])
+    # [DISABLED] route ảnh % Home Page — tạm thời bỏ.
+    # app.add_route("/assets/{filename}", asset_route, methods=["GET"])
+    # app.add_route("/results/{filename}", result_route, methods=["GET"])
     app.add_route("/sessions/{session_id}/events", session_events_route, methods=["GET"])
     app.add_route("/chat", chat_route, methods=["POST"])
     app.add_route("/jobs/{job_id}", job_route, methods=["GET"])
