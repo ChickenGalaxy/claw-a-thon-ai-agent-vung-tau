@@ -13,7 +13,7 @@ import threading
 
 import duckdb
 
-from .config import PARQUET_PATH, logger
+from .config import PARQUET_PATH, PAYMENT_PARQUET_PATH, logger
 
 _LOCK = threading.Lock()
 _CON = None
@@ -48,7 +48,22 @@ DuckDB dialect notes:
 - Read a metadata field: json_extract_string(metadata, '$.section')
 - Home Page service click-rate: users with event_id='AAAA.020' (per app_profile_name) / users with event_id='AAAA.005'
 - Filter by date: ymd BETWEEN 20260501 AND 20260531
-- Always alias aggregates and keep results small (GROUP BY + ORDER BY + LIMIT)."""
+- Always alias aggregates and keep results small (GROUP BY + ORDER BY + LIMIT).
+
+Table (DuckDB view): payment  -- backed by data/payment.parquet (~194K rows)
+Columns:
+  payment_ymd   BIGINT    -- payment date as YYYYMMDD (range 20260301..20260531)
+  user_id       VARCHAR   -- anonymized user ID, same masking rule as event_log.user_id
+  payment_time  TIMESTAMP -- payment timestamp from TPE reqDate
+  trans_id      BIGINT    -- transaction ID
+  app_id        BIGINT    -- payment app ID
+  amount        BIGINT    -- transaction amount (VND)
+  trans_type    BIGINT    -- transaction type
+
+Notes:
+- Join event_log and payment by user_id.
+- Every row in payment is a successful transaction (transStatus=1 in raw TPE).
+- Use payment_ymd for date filtering (same format as event_log.ymd)."""
 
 
 def _connect():
@@ -57,6 +72,9 @@ def _connect():
         con = duckdb.connect(database=":memory:")
         safe_path = str(PARQUET_PATH).replace("'", "''")
         con.execute(f"CREATE VIEW event_log AS SELECT * FROM read_parquet('{safe_path}')")
+        if PAYMENT_PARQUET_PATH.exists():
+            safe_payment_path = str(PAYMENT_PARQUET_PATH).replace("'", "''")
+            con.execute(f"CREATE VIEW payment AS SELECT * FROM read_parquet('{safe_payment_path}')")
         _CON = con
     return _CON
 

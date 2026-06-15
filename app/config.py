@@ -33,6 +33,7 @@ PROMPT_PATH = Path(os.environ.get("SYSTEM_PROMPT_PATH", "prompts/system_prompt.m
 # HOMEPAGE_RESULT_IMAGE_URL = "/assets/homepage_reference_result.png"
 DATA_SOURCE = os.environ.get("DATA_SOURCE", "parquet").strip().lower() or "parquet"
 PARQUET_PATH = Path(os.environ.get("PARQUET_PATH", "data/event_log.parquet"))
+PAYMENT_PARQUET_PATH = Path(os.environ.get("PAYMENT_PARQUET_PATH", "data/payment.parquet"))
 MAX_UPLOAD_BYTES = int(os.environ.get("MAX_UPLOAD_BYTES", str(15 * 1024 * 1024)))
 MAX_FILE_CONTEXT_CHARS = int(os.environ.get("MAX_FILE_CONTEXT_CHARS", "12000"))
 
