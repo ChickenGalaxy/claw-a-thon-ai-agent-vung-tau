@@ -37,6 +37,8 @@ def file_kind(filename: str) -> str:
         return "pdf"
     if suffix in {".txt", ".md", ".json", ".log"}:
         return "text"
+    if suffix in {".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp"}:
+        return "image"
     return "binary"
 
 
