@@ -13,7 +13,7 @@ cd "$(dirname "$0")"
 # so `docker login` stores credentials in-file instead of macOS Keychain.
 # Fixes "Keychain Error (-60008)" without touching your normal ~/.docker config.
 # (Kept in /tmp so the base64 creds never land in the build context.)
-export DOCKER_CONFIG="/tmp/agentbase-docker-config"
+export DOCKER_CONFIG="${DOCKER_CONFIG:-$HOME/.agentbase-docker-config}"
 mkdir -p "$DOCKER_CONFIG"
 printf '{}' > "$DOCKER_CONFIG/config.json"
 
