@@ -171,9 +171,24 @@
     .suggestions { padding:16px 24px 0; display:flex; flex-direction:column; gap:10px; }
     .suggestions-label { font-size:11px; font-weight:800; color:var(--muted); letter-spacing:.08em; text-transform:uppercase; }
     .suggestions-grid { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
-    .suggestion-chip { border:1px solid var(--border); background:var(--panel); border-radius:12px; padding:10px 13px; cursor:pointer; font-size:12px; color:var(--text); line-height:1.45; text-align:left; font-weight:500; transition:border-color .15s,background .15s,box-shadow .15s; }
-    .suggestion-chip:hover { border-color:var(--blue); background:var(--accent-soft); box-shadow:0 2px 8px rgba(0,104,255,.1); }
-    .suggestion-chip .chip-icon { font-size:15px; margin-bottom:4px; display:block; }
+    .suggestion-chip {
+      border:1px solid var(--border); background:var(--panel); border-radius:12px;
+      padding:11px 13px; cursor:pointer; font-size:12px; color:var(--text);
+      line-height:1.45; text-align:left; font-weight:600;
+      transition:border-color .15s,background .15s,box-shadow .15s,transform .15s;
+      display:flex; align-items:center; gap:9px;
+    }
+    .suggestion-chip:hover {
+      border-color:var(--blue); background:var(--accent-soft);
+      box-shadow:0 2px 8px rgba(0,104,255,.1); transform:translateY(-1px);
+    }
+    .suggestion-chip .chip-icon {
+      width:22px; height:22px; border-radius:7px; flex-shrink:0;
+      display:flex; align-items:center; justify-content:center;
+      background:linear-gradient(135deg,rgba(0,104,255,.12),rgba(6,199,85,.12));
+      color:var(--blue); font-size:14px; line-height:1; margin:0;
+    }
+    .suggestion-chip .chip-text { min-width:0; }
 
     /* === FILE UPLOAD === */
     .file-limit-note { font-size:11px; color:var(--muted); margin-top:6px; }
@@ -203,8 +218,69 @@
     #chat { overflow:auto; padding:20px 24px; display:flex; flex-direction:column; gap:12px; }
     .message { flex-shrink:0; max-width:min(780px,100%); overflow-wrap:anywhere; padding:12px 16px; border:1px solid var(--border); border-radius:16px; background:var(--panel); line-height:1.6; white-space:pre-wrap; font-size:14px; }
     .message img { display:block; max-width:min(100%,520px); height:auto; margin-top:10px; border-radius:12px; border:1px solid var(--border); }
+
+    /* === RICH ASSISTANT RESPONSE === */
+    .message.assistant { white-space: normal; padding: 14px 16px; }
+    .message.user { white-space: pre-wrap; }
+    .message.assistant h3 {
+      margin: 0 0 10px; font-size: 15px; line-height: 1.35; font-weight: 800; letter-spacing: -0.01em;
+    }
+    .message.assistant h4 {
+      margin: 14px 0 8px; font-size: 13px; line-height: 1.35; font-weight: 800; color: var(--text);
+    }
+    .message.assistant p { margin: 0 0 10px; }
+    .message.assistant p:last-child { margin-bottom: 0; }
+    .message.assistant strong { font-weight: 800; }
+    .message.assistant ul, .message.assistant ol { margin: 6px 0 12px; padding-left: 20px; }
+    .message.assistant li { margin: 3px 0; }
+    .message.assistant code.inline-code {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+      font-size: 12px; background: var(--soft); border: 1px solid var(--border);
+      border-radius: 5px; padding: 1px 4px;
+    }
+    .data-table-wrap {
+      width: 100%; overflow-x: auto; margin: 10px 0 12px;
+      border: 1px solid var(--border); border-radius: 10px; background: #fffdf9;
+    }
+    table.data-table {
+      width: 100%; border-collapse: collapse; font-size: 13px; line-height: 1.45; white-space: nowrap;
+    }
+    .data-table th {
+      text-align: left; font-weight: 800; background: var(--soft); color: var(--text);
+      border-bottom: 1px solid var(--border); padding: 8px 10px;
+    }
+    .data-table td { border-bottom: 1px solid var(--border); padding: 7px 10px; }
+    .data-table tr:last-child td { border-bottom: 0; }
+    .data-table th.num, .data-table td.num { text-align: right; font-variant-numeric: tabular-nums; }
+    .data-output, .code-output {
+      margin: 10px 0 12px; padding: 11px 12px; border-radius: 10px; border: 1px solid var(--border);
+      background: #141414; color: #f4f4f5; overflow-x: auto; font-size: 12px; line-height: 1.45;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+      white-space: pre; tab-size: 2;
+    }
+    .code-output { background: #fffdf9; color: var(--text); }
+    .assistant-note {
+      margin: 10px 0 0; padding: 9px 11px; border-left: 3px solid var(--blue);
+      background: var(--accent-soft); border-radius: 8px; font-size: 13px;
+    }
+
     .user { align-self:flex-end; background:var(--accent-soft); border-color:rgba(0,104,255,.22); }
     .assistant { align-self:flex-start; }
+    .assistant h3 { margin:2px 0 10px; font-size:15px; line-height:1.35; }
+    .assistant h4 { margin:14px 0 8px; font-size:13px; color:var(--muted); text-transform:uppercase; letter-spacing:.04em; }
+    .assistant table {
+      width:100%; border-collapse:collapse; margin:10px 0 12px;
+      font-size:13px; background:#fff; border:1px solid var(--border);
+      border-radius:10px; overflow:hidden; display:block;
+    }
+    .assistant thead { background:var(--soft); }
+    .assistant th, .assistant td { padding:8px 10px; border-bottom:1px solid var(--border); text-align:left; }
+    .assistant th { font-weight:800; color:var(--text); }
+    .assistant td.num, .assistant th.num { text-align:right; font-variant-numeric:tabular-nums; }
+    .assistant pre {
+      background:#171717; color:#f5f5f5; padding:12px 14px; border-radius:12px;
+      overflow:auto; white-space:pre; font-size:12px; line-height:1.5; border:1px solid rgba(0,0,0,.12);
+    }
     .error { color:var(--danger); }
 
     /* === THINKING / PROCESS === */
@@ -323,10 +399,10 @@
       <div id="suggestions" class="suggestions">
         <div class="suggestions-label">Suggested prompts</div>
         <div class="suggestions-grid">
-          <button class="suggestion-chip" type="button" data-prompt="Interaction rate — view by month and by average day"><span class="chip-icon">📈</span>Interaction rate (by month / avg day)</button>
-          <button class="suggestion-chip" type="button" data-prompt="Conversion rate for all users"><span class="chip-icon">🎯</span>Conversion rate (All users)</button>
-          <button class="suggestion-chip" type="button" data-prompt="Top 10 click rate by app, view by month"><span class="chip-icon">📊</span>Top 10 click rate by app (by month)</button>
-          <button class="suggestion-chip" type="button" data-prompt="Number of loads by day"><span class="chip-icon">📅</span>Number of load by days</button>
+          <button class="suggestion-chip" type="button" data-prompt="Interaction rate — view by month and by average day"><span class="chip-icon" aria-hidden="true">↗</span><span class="chip-text">Interaction rate (by month / avg day)</span></button>
+          <button class="suggestion-chip" type="button" data-prompt="Conversion rate for all users"><span class="chip-icon" aria-hidden="true">↗</span><span class="chip-text">Conversion rate (All users)</span></button>
+          <button class="suggestion-chip" type="button" data-prompt="Top 10 click rate by app, view by month"><span class="chip-icon" aria-hidden="true">↗</span><span class="chip-text">Top 10 click rate by app (by month)</span></button>
+          <button class="suggestion-chip" type="button" data-prompt="Number of loads by day"><span class="chip-icon" aria-hidden="true">↗</span><span class="chip-text">Number of load by days</span></button>
         </div>
       </div>
       <footer>
@@ -459,12 +535,180 @@
         .replaceAll('"', "&quot;")
         .replaceAll("'", "&#039;");
     }
-    function renderMessageHtml(text) {
-      const escaped = escapeHtml(text || "");
-      return escaped.replace(/!\[([^\]]*)\]\((\/(?:assets|results)\/[A-Za-z0-9._\/-]+)\)/g, (_, alt, src) => {
+    function renderInlineMarkdown(value) {
+      let html = escapeHtml(value || "");
+
+      // Images generated by backend
+      html = html.replace(/!\[([^\]]*)\]\((\/(?:assets|results)\/[A-Za-z0-9._\/-]+)\)/g, (_, alt, src) => {
         const cacheSafeSrc = src.startsWith("/results/") ? `${src}?_t=${Date.now()}` : src;
         return `<img src="${cacheSafeSrc}" alt="${alt}" loading="lazy" />`;
       });
+
+      // Inline code first, then bold
+      html = html.replace(/`([^`]+)`/g, '<code class="inline-code">$1</code>');
+      html = html.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+      return html;
+    }
+
+    function looksNumeric(value) {
+      const s = String(value || "").trim();
+      if (!s) return false;
+      return /^[-+]?[\d,.]+%?$/.test(s) || /^\+?[-\d,.]+\s?(pts|điểm %|MB|KB|users|rows)?$/i.test(s);
+    }
+
+    function renderHtmlTable(rows, align = []) {
+      if (!rows.length) return "";
+      const header = rows[0];
+      const body = rows.slice(1);
+      const th = header.map((h, idx) => `<th class="${align[idx] === "right" ? "num" : ""}">${renderInlineMarkdown(h)}</th>`).join("");
+      const trs = body.map(row => {
+        const tds = row.map((cell, idx) => {
+          const cls = align[idx] === "right" || (!align[idx] && looksNumeric(cell)) ? "num" : "";
+          return `<td class="${cls}">${renderInlineMarkdown(cell)}</td>`;
+        }).join("");
+        return `<tr>${tds}</tr>`;
+      }).join("");
+      return `<div class="data-table-wrap"><table class="data-table"><thead><tr>${th}</tr></thead><tbody>${trs}</tbody></table></div>`;
+    }
+
+    function parseMarkdownTable(lines, start) {
+      if (start + 1 >= lines.length) return null;
+      const headerLine = lines[start].trim();
+      const sepLine = lines[start + 1].trim();
+      if (!headerLine.includes("|") || !/^\|?\s*:?-{3,}:?\s*(\|\s*:?-{3,}:?\s*)+\|?$/.test(sepLine)) return null;
+
+      const split = (line) => line.trim().replace(/^\|/, "").replace(/\|$/, "").split("|").map(v => v.trim());
+      const header = split(headerLine);
+      const sep = split(sepLine);
+      const align = sep.map(s => s.endsWith(":") ? "right" : "left");
+      const rows = [header];
+      let i = start + 2;
+      while (i < lines.length && lines[i].trim().includes("|") && lines[i].trim() !== "") {
+        const row = split(lines[i]);
+        if (row.length === header.length) rows.push(row);
+        i++;
+      }
+      return { html: renderHtmlTable(rows, align), next: i };
+    }
+
+    function parseDashTable(lines, start) {
+      const line = lines[start].trim();
+      if (!line.startsWith("- ") || !line.includes("—")) return null;
+
+      const split = (l) => l.trim().replace(/^-\s*/, "").split("—").map(v => v.trim()).filter(Boolean);
+      const header = split(line);
+      if (header.length < 2) return null;
+
+      const rows = [header];
+      let i = start + 1;
+      while (i < lines.length) {
+        const cur = lines[i].trim();
+        if (!cur.startsWith("- ") || !cur.includes("—")) break;
+        const row = split(cur);
+        if (row.length !== header.length) break;
+        rows.push(row);
+        i++;
+      }
+      if (rows.length < 2) return null;
+      return { html: renderHtmlTable(rows), next: i };
+    }
+
+    function renderParagraph(lines) {
+      const text = lines.join(" ").trim();
+      if (!text) return "";
+      return `<p>${renderInlineMarkdown(text)}</p>`;
+    }
+
+    function renderMarkdownSegment(segment) {
+      const lines = String(segment || "").replace(/\r\n/g, "\n").split("\n");
+      let html = "";
+      let i = 0;
+
+      while (i < lines.length) {
+        const raw = lines[i];
+        const line = raw.trim();
+
+        if (!line) { i++; continue; }
+
+        const table = parseMarkdownTable(lines, i);
+        if (table) { html += table.html; i = table.next; continue; }
+
+        const dashTable = parseDashTable(lines, i);
+        if (dashTable) { html += dashTable.html; i = dashTable.next; continue; }
+
+        if (/^#{1,4}\s+/.test(line)) {
+          const level = Math.min((line.match(/^#+/) || ["###"])[0].length, 4);
+          const tag = level <= 3 ? "h3" : "h4";
+          html += `<${tag}>${renderInlineMarkdown(line.replace(/^#{1,4}\s+/, ""))}</${tag}>`;
+          i++; continue;
+        }
+
+        if (/^\*\*[^*]+\*\*\s*$/.test(line)) {
+          html += `<h4>${renderInlineMarkdown(line.replace(/\*\*/g, ""))}</h4>`;
+          i++; continue;
+        }
+
+        if (/^[-*]\s+/.test(line)) {
+          const items = [];
+          while (i < lines.length && /^[-*]\s+/.test(lines[i].trim()) && !lines[i].includes("—")) {
+            items.push(lines[i].trim().replace(/^[-*]\s+/, ""));
+            i++;
+          }
+          html += `<ul>${items.map(item => `<li>${renderInlineMarkdown(item)}</li>`).join("")}</ul>`;
+          continue;
+        }
+
+        if (/^\d+[.)]\s+/.test(line)) {
+          const items = [];
+          while (i < lines.length && /^\d+[.)]\s+/.test(lines[i].trim())) {
+            items.push(lines[i].trim().replace(/^\d+[.)]\s+/, ""));
+            i++;
+          }
+          html += `<ol>${items.map(item => `<li>${renderInlineMarkdown(item)}</li>`).join("")}</ol>`;
+          continue;
+        }
+
+        const para = [];
+        while (
+          i < lines.length &&
+          lines[i].trim() &&
+          !/^#{1,4}\s+/.test(lines[i].trim()) &&
+          !/^[-*]\s+/.test(lines[i].trim()) &&
+          !/^\d+[.)]\s+/.test(lines[i].trim()) &&
+          !parseMarkdownTable(lines, i) &&
+          !parseDashTable(lines, i)
+        ) {
+          para.push(lines[i].trim());
+          i++;
+        }
+        html += renderParagraph(para);
+      }
+
+      return html;
+    }
+
+    function renderFencedBlock(lang, code) {
+      const escaped = escapeHtml(code.replace(/\n$/, ""));
+      const isDataLike = (lang || "").toLowerCase() === "text" || /^\s*\+[-+]+\+\s*\n\s*\|/m.test(code);
+      const cls = isDataLike ? "data-output" : "code-output";
+      return `<pre class="${cls}"><code>${escaped}</code></pre>`;
+    }
+
+    function renderMessageHtml(text) {
+      const src = String(text || "");
+      const parts = [];
+      const fenceRe = /```([A-Za-z0-9_-]*)\n([\s\S]*?)```/g;
+      let last = 0;
+      let match;
+
+      while ((match = fenceRe.exec(src)) !== null) {
+        if (match.index > last) parts.push(renderMarkdownSegment(src.slice(last, match.index)));
+        parts.push(renderFencedBlock(match[1], match[2]));
+        last = fenceRe.lastIndex;
+      }
+      if (last < src.length) parts.push(renderMarkdownSegment(src.slice(last)));
+
+      return parts.join("");
     }
     function displayFileName(filename) {
       return String(filename || "").replace(/[.][^.]+$/, "");
