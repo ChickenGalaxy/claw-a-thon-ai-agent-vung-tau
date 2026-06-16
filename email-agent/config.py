@@ -20,8 +20,8 @@ logger = logging.getLogger("email-agent")
 # Local dev port (AgentBase runtime always uses 8080 in production via uvicorn).
 PORT = int(os.environ.get("PORT", "8090"))
 
-# Where to deliver reports by default if the caller doesn't specify a recipient.
-DEFAULT_RECIPIENT = os.environ.get("DEFAULT_RECIPIENT", "trucnt7@vng.com.vn").strip()
+# No hard-coded default recipient — the caller must always pass recipient(s).
+DEFAULT_RECIPIENT = os.environ.get("DEFAULT_RECIPIENT", "").strip()
 
 # --- Email transport --------------------------------------------------------
 # "mock" = log only (default, for local testing). "smtp" = real send.

@@ -31,6 +31,21 @@ _EMAIL_RE = re.compile(r"[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}")
 _PENDING: dict[str, dict] = {}
 _PENDING_LOCK = threading.Lock()
 
+# Last ANALYSIS result (Markdown) per actor+session. Email-send always uses this —
+# i.e. the actual analysis, never a later conversational/offer message.
+_LAST_ANALYSIS: dict[str, str] = {}
+_LAST_ANALYSIS_LOCK = threading.Lock()
+
+
+def set_last_analysis(actor_id: str, session_id: str, markdown: str) -> None:
+    with _LAST_ANALYSIS_LOCK:
+        _LAST_ANALYSIS[f"{actor_id}:{session_id}"] = markdown
+
+
+def get_last_analysis(actor_id: str, session_id: str) -> str | None:
+    with _LAST_ANALYSIS_LOCK:
+        return _LAST_ANALYSIS.get(f"{actor_id}:{session_id}")
+
 
 def extract_email(message: str) -> str | None:
     """Return the first email address found in the message, or None."""

@@ -7,9 +7,11 @@ from .report_render import answer_title, markdown_to_pdf_bytes
 from .daily_new_user import (
     build_daily_new_user_report,
     extract_emails,
+    get_last_analysis,
     handle_daily_new_user_email,
     is_daily_new_user_email_request,
     pop_pending_email,
+    set_last_analysis,
     set_pending_email,
 )
 from .email_output import handle_email_output, last_assistant_answer, wants_email_output
@@ -78,9 +80,17 @@ def should_load_default_dataset(message: str) -> bool:
     if any(term in normalized for term in REMEMBER_TERMS):
         return False
     data_terms = (
+        # English analytics vocabulary
         "analytics", "csv", "data", "dataset", "event", "event_log", "parquet", "query", "sql", "table",
-        "bảng", "bao nhiêu", "click", "dòng", "dữ liệu", "lọc", "phân tích", "thống kê", "tính", "tỉ lệ",
-        "tỷ lệ", "user",
+        "click", "clicks", "load", "loads", "user", "users", "rate", "ratio", "number", "count", "total",
+        "sum", "average", "avg", "top", "rank", "ranking", "trend", "growth", "month", "monthly", "day",
+        "daily", "week", "weekly", "breakdown", "conversion", "retention", "ctr", "dau", "mau", "distinct",
+        "compare", "comparison", "percent", "percentage", "funnel", "cohort", "active", "paying", "metric",
+        "report", "icon", "service", "session", "payment", "os ", "appver", "home",
+        # Vietnamese
+        "bảng", "bao nhiêu", "dòng", "dữ liệu", "lọc", "phân tích", "thống kê", "tính", "tỉ lệ", "tỷ lệ",
+        "lượt", "ngày", "tháng", "tuần", "trung bình", "xếp hạng", "tổng", "đếm", "biểu đồ", "báo cáo",
+        "chuyển đổi", "giữ chân", "phần trăm", "so sánh", "tăng trưởng", "người dùng",
     )
     return any(term in normalized for term in data_terms)
 
@@ -119,51 +129,44 @@ def analyze_payload(payload: dict, session_id: str | None = None, progress=None)
             if progress:
                 progress("Đã ghi nhớ dài hạn yêu cầu của bạn.")
 
-        # Daily-new-user-in-a-month report → email flow. We always ASK who to send
-        # the report to first (unless the user gave an email in the same message),
-        # then send to exactly that address on their reply.
+        # ----- Email flow ------------------------------------------------------
+        # Principle: ALWAYS email the latest ANALYSIS result (never a later
+        # conversational/offer message), to exactly the recipient(s) the user
+        # gives. There is NO default recipient — we always ask if none is given.
         def _finish_email(result: dict) -> dict:
             try:
                 create_memory_event(actor_id, effective_session_id, "assistant", result.get("response", ""))
             except Exception:
-                logger.exception("create_memory_event(assistant) failed for daily-new-user email")
+                logger.exception("create_memory_event(assistant) failed for email flow")
             result["session_id"] = effective_session_id
             result["actor_id"] = actor_id
             return result
 
-        def _send_pending(pending: dict, recipients: list) -> dict:
-            """Execute a stashed email send (daily-new-user report or generic result)."""
-            if pending.get("kind") == "daily_new_user":
-                return handle_daily_new_user_email(pending.get("message", message), progress=progress, recipient=recipients)
-            return handle_email_output(pending.get("body", ""), recipient=recipients, subject=pending.get("subject"), progress=progress)
-
-        def _ask_recipient(pending: dict, prompt: str) -> dict:
-            set_pending_email(actor_id, effective_session_id, pending)
-            if progress:
-                progress("Cần biết email người nhận trước khi gửi.")
-            return _finish_email({"status": "success", "response": prompt, "intent": "ask_email_recipient"})
-
         emails_in_msg = extract_emails(message)
         pending_request = pop_pending_email(actor_id, effective_session_id)
+        last_analysis = get_last_analysis(actor_id, effective_session_id)
+        # The result to email: prefer a stashed pending body, then the tracked last
+        # analysis, then (fallback) the last assistant message the user actually saw.
+        sendable = (pending_request or {}).get("body") or last_analysis or last_assistant_answer(memory_context)
 
-        # Case 1: we previously offered to email a result and the user just replied.
-        if pending_request and emails_in_msg:
+        # Case 1: the message contains email address(es) → send the analysis result.
+        if emails_in_msg and sendable:
             if progress:
-                progress(f"Đã nhận {len(emails_in_msg)} email người nhận. Đang gửi.")
-            return _finish_email(_send_pending(pending_request, emails_in_msg))
-        # If the reply had no email, we simply drop the pending offer and let the
-        # message be handled normally (no nagging). pending was already popped above.
+                progress(f"Đang gửi kết quả phân tích tới {', '.join(emails_in_msg)}.")
+            return _finish_email(handle_email_output(sendable, recipient=emails_in_msg, progress=progress))
 
-        # Case 2: a fresh daily-new-user report request.
+        # Case 2: a fresh daily-new-user report request → compute, SHOW, then offer.
         if is_daily_new_user_email_request(message):
-            # If the user already gave email(s), compute + send straight away.
-            if emails_in_msg:
-                if progress:
-                    progress(f"Sẽ gửi báo cáo tới {', '.join(emails_in_msg)}.")
-                return _finish_email(handle_daily_new_user_email(message, progress=progress, recipient=emails_in_msg))
-            # Otherwise: ALWAYS show the computed result first, then ask about email.
             report_md = build_daily_new_user_report(message, progress=progress)
             pdf_url = save_result_pdf(report_md, result_id)
+            set_last_analysis(actor_id, effective_session_id, report_md)
+            if emails_in_msg:  # recipient already given inline → send immediately
+                if progress:
+                    progress(f"Sẽ gửi báo cáo tới {', '.join(emails_in_msg)}.")
+                out = handle_email_output(report_md, recipient=emails_in_msg, progress=progress)
+                out["response"] = f"{report_md}\n\n{out.get('response','')}"
+                out["pdf_url"] = pdf_url
+                return _finish_email(out)
             set_pending_email(actor_id, effective_session_id, {"kind": "generic", "body": report_md})
             prompt = (
                 f"{report_md}\n\n"
@@ -172,21 +175,23 @@ def analyze_payload(payload: dict, session_id: str | None = None, progress=None)
             )
             return _finish_email({"status": "success", "response": prompt, "intent": "ask_email_recipient", "pdf_url": pdf_url})
 
-        # Case 3: generic "email the latest result to me/<address>".
+        # Case 3: user asks to email but gave no address → ask for recipient(s).
         if wants_email_output(message):
-            answer_to_send = last_assistant_answer(memory_context)
-            if not answer_to_send:
+            if not sendable:
                 return _finish_email({
                     "status": "success",
                     "intent": "email_output",
-                    "response": "Hiện chưa có kết quả nào để gửi. Bạn hãy hỏi một câu phân tích trước, rồi yêu cầu mình gửi kết quả qua email nhé.",
+                    "response": "Hiện chưa có kết quả phân tích nào để gửi. Bạn hãy hỏi một câu phân tích trước, rồi yêu cầu mình gửi kết quả qua email nhé.",
                 })
-            pending = {"kind": "generic", "body": answer_to_send}
-            if emails_in_msg:
-                if progress:
-                    progress(f"Sẽ gửi kết quả gần nhất tới {', '.join(emails_in_msg)}.")
-                return _finish_email(handle_email_output(answer_to_send, recipient=emails_in_msg, progress=progress))
-            return _ask_recipient(pending, "Bạn muốn gửi kết quả này tới email nào? Vui lòng nhập địa chỉ email người nhận (có thể nhiều email, cách nhau bởi dấu phẩy).")
+            set_pending_email(actor_id, effective_session_id, {"kind": "generic", "body": sendable})
+            if progress:
+                progress("Cần biết email người nhận trước khi gửi.")
+            return _finish_email({
+                "status": "success",
+                "intent": "ask_email_recipient",
+                "response": "Bạn muốn gửi kết quả này tới email nào? Vui lòng nhập địa chỉ email người nhận (có thể nhiều email, cách nhau bởi dấu phẩy).",
+            })
+        # No email intent → fall through to normal analysis/answer.
 
         file_context = []
         if progress:
@@ -295,8 +300,9 @@ def analyze_payload(payload: dict, session_id: str | None = None, progress=None)
             pdf_url = save_result_pdf(answer, result_id)
             if progress and pdf_url:
                 progress("Đã tạo PDF kết quả.")
-            # Stash the analysis as a pending generic send so a follow-up message
-            # containing an email address just sends this result.
+            # Remember this analysis so a follow-up email request sends exactly it
+            # (the analysis result — not any later conversational message).
+            set_last_analysis(actor_id, effective_session_id, answer)
             set_pending_email(actor_id, effective_session_id, {"kind": "generic", "body": answer})
             response_text = (
                 f"{answer}\n\n---\n"

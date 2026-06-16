@@ -54,7 +54,9 @@ LLM_MODEL = os.environ.get("LLM_MODEL", "gpt-4o-mini").strip()
 # Bound each LLM call so a slow/hung upstream can't leave a chat job stuck in
 # "inprogess" forever (which made the UI spin until its own poll timeout).
 LLM_TIMEOUT = float(os.environ.get("LLM_TIMEOUT", "60"))
-LLM_MAX_RETRIES = int(os.environ.get("LLM_MAX_RETRIES", "0"))
+# One retry for transient MaaS timeouts. With thinking disabled, calls return in
+# well under a second, so a retry is cheap and rarely needed.
+LLM_MAX_RETRIES = int(os.environ.get("LLM_MAX_RETRIES", "1"))
 # Qwen3 "thinking" mode emits huge reasoning and routinely times out (4+ min per
 # call). Disable it by default so calls return in <1s. Override to "true" to re-enable.
 LLM_ENABLE_THINKING = os.environ.get("LLM_ENABLE_THINKING", "false").strip().lower() in ("1", "true", "yes")
@@ -74,7 +76,8 @@ MEMORY_ACTOR_ID = os.environ.get("MEMORY_ACTOR_ID", "web-user").strip() or "web-
 # Local default points at the email agent running on port 8090. In production,
 # set this to the email agent's AgentBase endpoint URL.
 EMAIL_AGENT_URL = os.environ.get("EMAIL_AGENT_URL", "http://localhost:8090").strip().rstrip("/")
-EMAIL_RECIPIENT = os.environ.get("EMAIL_RECIPIENT", "trucnt7@vng.com.vn").strip()
+# No hard-coded default recipient — the user must always supply the email(s).
+EMAIL_RECIPIENT = os.environ.get("EMAIL_RECIPIENT", "").strip()
 EMAIL_AGENT_TIMEOUT = int(os.environ.get("EMAIL_AGENT_TIMEOUT", "120"))
 # Optional bearer token when calling a deployed (PUBLIC) email agent endpoint.
 EMAIL_AGENT_TOKEN = os.environ.get("EMAIL_AGENT_TOKEN", "").strip()
