@@ -2,8 +2,19 @@ import json
 import re
 from typing import Any
 
-from .config import LLM_MODEL, PROMPT_PATH, llm, logger
+from .config import LLM_ENABLE_THINKING, LLM_MODEL, PROMPT_PATH, llm, logger
 from .query_engine import SCHEMA_TEXT
+
+
+def _llm_extra() -> dict:
+    """Extra kwargs for chat.completions — disable Qwen3 'thinking' unless enabled.
+
+    Thinking mode emits long reasoning and frequently times out; turning it off
+    makes calls return in well under a second.
+    """
+    if LLM_ENABLE_THINKING:
+        return {}
+    return {"extra_body": {"chat_template_kwargs": {"enable_thinking": False}}}
 
 
 def _extract_sql(text: str) -> str:
@@ -35,7 +46,12 @@ def generate_sql(message: str, memory_context: list | None = None, long_term_fac
         "- A single SELECT or WITH statement. No DDL/DML, no semicolons, no comments.\n"
         "- Query the view named event_log. Keep results small (GROUP BY + ORDER BY + LIMIT).\n"
         "- Use COUNT(DISTINCT user_id) for unique users. Normalize OS with LOWER(os).\n"
-        "- Read metadata fields with json_extract_string(metadata, '$.key').\n\n"
+        "- Read metadata fields with json_extract_string(metadata, '$.key').\n"
+        "- NEVER put an aggregate in GROUP BY. If the SELECT list is ONLY aggregates "
+        "(e.g. a single overall ratio/total), do NOT add any GROUP BY at all.\n"
+        "- For a single overall ratio across two tables, compute each side with a scalar "
+        "subquery, e.g. SELECT (SELECT COUNT(DISTINCT user_id) FROM payment) * 1.0 / "
+        "(SELECT COUNT(DISTINCT user_id) FROM event_log) AS rate — no JOIN, no GROUP BY.\n\n"
         f"{SCHEMA_TEXT}"
     )
     hints = []
@@ -45,11 +61,12 @@ def generate_sql(message: str, memory_context: list | None = None, long_term_fac
         hints.append("Recent conversation (for metric definitions taught this session): " + json.dumps(memory_context[-6:], ensure_ascii=False))
     if error_hint:
         hints.append("The previous query failed with this error, fix it: " + error_hint)
-    user = json.dumps({"question": message, "hints": hints}, ensure_ascii=False)
+    user = json.dumps({"question": message, "hints": hints}, ensure_ascii=False, default=str)
     completion = llm.chat.completions.create(
         model=LLM_MODEL,
         messages=[{"role": "system", "content": system}, {"role": "user", "content": user}],
         temperature=0,
+        **_llm_extra(),
     )
     sql = _extract_sql(completion.choices[0].message.content or "")
     logger.info("generate_sql -> %s", sql.replace("\n", " ")[:300])
@@ -74,9 +91,10 @@ def answer_with_llm(message: str, context: dict[str, Any]) -> str:
         model=LLM_MODEL,
         messages=[
             {"role": "system", "content": system_prompt},
-            {"role": "user", "content": json.dumps({"question": message, "model": LLM_MODEL, **context}, ensure_ascii=False)},
+            {"role": "user", "content": json.dumps({"question": message, "model": LLM_MODEL, **context}, ensure_ascii=False, default=str)},
         ],
         temperature=0.2,
+        **_llm_extra(),
     )
     return completion.choices[0].message.content or ""
 

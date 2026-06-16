@@ -283,6 +283,16 @@
     }
     .error { color:var(--danger); }
 
+    /* === PDF DOWNLOAD === */
+    .pdf-download { align-self:flex-start; margin-top:-4px; }
+    .pdf-download a {
+      display:inline-flex; align-items:center; gap:7px;
+      border:1px solid var(--border); background:var(--panel); color:var(--blue);
+      border-radius:10px; padding:8px 14px; font-size:13px; font-weight:600;
+      text-decoration:none; transition:background .15s, border-color .15s, box-shadow .15s;
+    }
+    .pdf-download a:hover { background:var(--accent-soft); border-color:var(--blue); box-shadow:0 2px 8px rgba(0,104,255,.12); }
+
     /* === THINKING / PROCESS === */
     @keyframes processIn { from { opacity:0; transform:translateY(6px); } to { opacity:1; transform:translateY(0); } }
     .process {
@@ -720,6 +730,21 @@
       else node.textContent = text;
       chatEl.appendChild(node);
       chatEl.scrollTop = chatEl.scrollHeight;
+      return node;
+    }
+    function addPdfDownload(pdfUrl) {
+      if (!pdfUrl) return;
+      const wrap = document.createElement("div");
+      wrap.className = "pdf-download";
+      const a = document.createElement("a");
+      a.href = pdfUrl;
+      a.setAttribute("download", "");
+      a.target = "_blank";
+      a.rel = "noopener";
+      a.innerHTML = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg> Tải kết quả (PDF)`;
+      wrap.appendChild(a);
+      chatEl.appendChild(wrap);
+      chatEl.scrollTop = chatEl.scrollHeight;
     }
     function addProcessMessage() {
       const node = document.createElement("div");
@@ -945,6 +970,7 @@
         updateProcessMessage(processNode, started.process || [{ message:"Đã nhận câu hỏi và đưa vào hàng đợi." }]);
         const data = await pollJob(started.job_id, processNode);
         addMessage("assistant", data.response || data.message || JSON.stringify(data, null, 2), data.status === "error" ? "error" : "");
+        if (data.status !== "error" && data.pdf_url) addPdfDownload(data.pdf_url);
       } catch (error) {
         if (processNode) processNode.remove();
         addMessage("assistant", `Không gọi được agent. Vui lòng thử lại. Chi tiết: ${error.message}`, "error"); messageEl.value = message;

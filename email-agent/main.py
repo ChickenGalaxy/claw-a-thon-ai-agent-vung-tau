@@ -27,9 +27,12 @@ app = GreenNodeAgentBaseApp()
 
 def handle_email(payload: dict) -> dict:
     try:
-        recipient = str(payload.get("recipient") or DEFAULT_RECIPIENT).strip()
+        # Accept "recipients" (list/str) or legacy single "recipient".
+        recipients = payload.get("recipients") or payload.get("recipient") or DEFAULT_RECIPIENT
         subject = payload.get("subject")
         body = payload.get("body")
+        html_body = payload.get("html_body")
+        attachment = payload.get("attachment")  # {"filename","content_base64","subtype"}
 
         if not (subject and body):
             report = payload.get("report") or {}
@@ -37,9 +40,14 @@ def handle_email(payload: dict) -> dict:
                 report = {}
             subject, body = compose_email(report)
 
-        result = send_email(recipient, str(subject), str(body))
+        result = send_email(
+            recipients, str(subject), str(body),
+            html_body=html_body, attachment=attachment,
+        )
         result["body_preview"] = str(body)[:280]
         result["subject"] = str(subject)
+        result["has_html"] = bool(html_body)
+        result["has_attachment"] = bool(attachment and attachment.get("content_base64"))
         return result
     except Exception as error:
         logger.exception("email agent failed")

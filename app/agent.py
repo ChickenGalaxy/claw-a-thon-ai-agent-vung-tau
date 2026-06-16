@@ -2,8 +2,17 @@ import uuid
 from datetime import datetime
 from typing import Any
 
-from .config import DATA_SOURCE, JOBS, JOBS_LOCK, MEMORY_ACTOR_ID, PARQUET_PATH, SUPABASE_TABLE, logger
-from .daily_new_user import handle_daily_new_user_email, is_daily_new_user_email_request
+from .config import DATA_SOURCE, JOBS, JOBS_LOCK, MEMORY_ACTOR_ID, PARQUET_PATH, RESULTS_DIR, SUPABASE_TABLE, logger
+from .report_render import answer_title, markdown_to_pdf_bytes
+from .daily_new_user import (
+    build_daily_new_user_report,
+    extract_emails,
+    handle_daily_new_user_email,
+    is_daily_new_user_email_request,
+    pop_pending_email,
+    set_pending_email,
+)
+from .email_output import handle_email_output, last_assistant_answer, wants_email_output
 from .data_sources import fetch_rows, parquet_summary
 from .file_context import load_file_context
 # [DISABLED] Home Page % image output — tạm thời bỏ. Module homepage_ctr vẫn còn
@@ -27,6 +36,18 @@ REMEMBER_TERMS = ("hãy nhớ", "ghi nhớ", "nhớ logic", "remember", "save th
 def wants_to_remember(message: str) -> bool:
     normalized = message.lower()
     return any(term in normalized for term in REMEMBER_TERMS)
+
+
+def save_result_pdf(answer: str, result_id: str) -> str | None:
+    """Render the answer to a PDF under RESULTS_DIR; return its /results URL or None."""
+    try:
+        RESULTS_DIR.mkdir(parents=True, exist_ok=True)
+        pdf_bytes = markdown_to_pdf_bytes(answer, title=answer_title(answer))
+        (RESULTS_DIR / f"{result_id}.pdf").write_bytes(pdf_bytes)
+        return f"/results/{result_id}.pdf"
+    except Exception:
+        logger.exception("save_result_pdf failed")
+        return None
 
 
 def run_data_query(message: str, memory_context: list, long_term_facts: list, progress=None) -> dict:
@@ -98,17 +119,74 @@ def analyze_payload(payload: dict, session_id: str | None = None, progress=None)
             if progress:
                 progress("Đã ghi nhớ dài hạn yêu cầu của bạn.")
 
-        # Daily-new-user-in-a-month report → compute here, then hand off to the
-        # separate email agent to email the result to the configured recipient.
-        if is_daily_new_user_email_request(message):
-            email_result = handle_daily_new_user_email(message, progress=progress)
+        # Daily-new-user-in-a-month report → email flow. We always ASK who to send
+        # the report to first (unless the user gave an email in the same message),
+        # then send to exactly that address on their reply.
+        def _finish_email(result: dict) -> dict:
             try:
-                create_memory_event(actor_id, effective_session_id, "assistant", email_result.get("response", ""))
+                create_memory_event(actor_id, effective_session_id, "assistant", result.get("response", ""))
             except Exception:
                 logger.exception("create_memory_event(assistant) failed for daily-new-user email")
-            email_result["session_id"] = effective_session_id
-            email_result["actor_id"] = actor_id
-            return email_result
+            result["session_id"] = effective_session_id
+            result["actor_id"] = actor_id
+            return result
+
+        def _send_pending(pending: dict, recipients: list) -> dict:
+            """Execute a stashed email send (daily-new-user report or generic result)."""
+            if pending.get("kind") == "daily_new_user":
+                return handle_daily_new_user_email(pending.get("message", message), progress=progress, recipient=recipients)
+            return handle_email_output(pending.get("body", ""), recipient=recipients, subject=pending.get("subject"), progress=progress)
+
+        def _ask_recipient(pending: dict, prompt: str) -> dict:
+            set_pending_email(actor_id, effective_session_id, pending)
+            if progress:
+                progress("Cần biết email người nhận trước khi gửi.")
+            return _finish_email({"status": "success", "response": prompt, "intent": "ask_email_recipient"})
+
+        emails_in_msg = extract_emails(message)
+        pending_request = pop_pending_email(actor_id, effective_session_id)
+
+        # Case 1: we previously offered to email a result and the user just replied.
+        if pending_request and emails_in_msg:
+            if progress:
+                progress(f"Đã nhận {len(emails_in_msg)} email người nhận. Đang gửi.")
+            return _finish_email(_send_pending(pending_request, emails_in_msg))
+        # If the reply had no email, we simply drop the pending offer and let the
+        # message be handled normally (no nagging). pending was already popped above.
+
+        # Case 2: a fresh daily-new-user report request.
+        if is_daily_new_user_email_request(message):
+            # If the user already gave email(s), compute + send straight away.
+            if emails_in_msg:
+                if progress:
+                    progress(f"Sẽ gửi báo cáo tới {', '.join(emails_in_msg)}.")
+                return _finish_email(handle_daily_new_user_email(message, progress=progress, recipient=emails_in_msg))
+            # Otherwise: ALWAYS show the computed result first, then ask about email.
+            report_md = build_daily_new_user_report(message, progress=progress)
+            pdf_url = save_result_pdf(report_md, result_id)
+            set_pending_email(actor_id, effective_session_id, {"kind": "generic", "body": report_md})
+            prompt = (
+                f"{report_md}\n\n"
+                "Bạn có muốn gửi báo cáo này qua email không? Nếu có, nhập địa chỉ email người nhận "
+                "(có thể nhiều email, cách nhau bởi dấu phẩy)."
+            )
+            return _finish_email({"status": "success", "response": prompt, "intent": "ask_email_recipient", "pdf_url": pdf_url})
+
+        # Case 3: generic "email the latest result to me/<address>".
+        if wants_email_output(message):
+            answer_to_send = last_assistant_answer(memory_context)
+            if not answer_to_send:
+                return _finish_email({
+                    "status": "success",
+                    "intent": "email_output",
+                    "response": "Hiện chưa có kết quả nào để gửi. Bạn hãy hỏi một câu phân tích trước, rồi yêu cầu mình gửi kết quả qua email nhé.",
+                })
+            pending = {"kind": "generic", "body": answer_to_send}
+            if emails_in_msg:
+                if progress:
+                    progress(f"Sẽ gửi kết quả gần nhất tới {', '.join(emails_in_msg)}.")
+                return _finish_email(handle_email_output(answer_to_send, recipient=emails_in_msg, progress=progress))
+            return _ask_recipient(pending, "Bạn muốn gửi kết quả này tới email nào? Vui lòng nhập địa chỉ email người nhận (có thể nhiều email, cách nhau bởi dấu phẩy).")
 
         file_context = []
         if progress:
@@ -205,9 +283,31 @@ def analyze_payload(payload: dict, session_id: str | None = None, progress=None)
         answer = clean_assistant_markdown(answer)
         # [DISABLED] không đính kèm ảnh % Home Page vào câu trả lời nữa.
         # answer = attach_homepage_result_image(answer, message, homepage_context["image_url"] if homepage_context else None)
+
+        # A data/file analysis turn → produce a downloadable PDF, then always offer
+        # to email the result. Plain conversational answers get neither.
+        did_analysis = (executed_query is not None) or bool(file_context)
+        pdf_url = None
+        response_text = answer
+        if did_analysis:
+            if progress:
+                progress("Đang tạo file PDF kết quả để tải về.")
+            pdf_url = save_result_pdf(answer, result_id)
+            if progress and pdf_url:
+                progress("Đã tạo PDF kết quả.")
+            # Stash the analysis as a pending generic send so a follow-up message
+            # containing an email address just sends this result.
+            set_pending_email(actor_id, effective_session_id, {"kind": "generic", "body": answer})
+            response_text = (
+                f"{answer}\n\n---\n"
+                "Bạn có muốn gửi kết quả này qua email không? Nếu có, nhập địa chỉ email người nhận "
+                "(có thể nhiều email, cách nhau bởi dấu phẩy)."
+            )
+
         if progress:
             progress("Hoàn tất câu trả lời.")
         try:
+            # Save the clean analysis (without the email prompt) to memory.
             create_memory_event(actor_id, effective_session_id, "assistant", answer)
         except Exception:
             logger.exception("create_memory_event(assistant) failed")
@@ -221,7 +321,8 @@ def analyze_payload(payload: dict, session_id: str | None = None, progress=None)
 
         return {
             "status": "success",
-            "response": answer,
+            "response": response_text,
+            "pdf_url": pdf_url,
             "rows_used": len(rows),
             "files_used": [file["filename"] for file in file_context],
             "table": SUPABASE_TABLE,

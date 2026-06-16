@@ -5,8 +5,7 @@ from pathlib import Path
 from starlette.responses import FileResponse, HTMLResponse, JSONResponse
 
 from .agent import get_job, run_chat_job, set_job
-# [DISABLED] HOMEPAGE_RESULT_IMAGE, RESULTS_DIR chỉ phục vụ output ảnh % Home (đã tắt).
-from .config import FRONTEND_INDEX, JOB_EXECUTOR, MAX_UPLOAD_BYTES, MEMORY_ACTOR_ID, UPLOAD_DIR
+from .config import FRONTEND_INDEX, JOB_EXECUTOR, MAX_UPLOAD_BYTES, MEMORY_ACTOR_ID, RESULTS_DIR, UPLOAD_DIR
 from .memory import list_memory_events
 from .storage import load_upload_index, register_upload, safe_filename, save_upload_index
 
@@ -69,6 +68,17 @@ async def create_uploads(request) -> JSONResponse:
 #     return FileResponse(path)
 
 
+async def result_pdf_route(request) -> FileResponse | JSONResponse:
+    """Serve a generated result PDF for download."""
+    filename = safe_filename(request.path_params["filename"])
+    if not filename.endswith(".pdf"):
+        filename += ".pdf"
+    path = RESULTS_DIR / filename
+    if not path.exists():
+        return JSONResponse({"message": "Result not found"}, status_code=404)
+    return FileResponse(path, media_type="application/pdf", filename=filename)
+
+
 async def session_events_route(request) -> JSONResponse:
     session_id = request.path_params["session_id"]
     actor_id = request.query_params.get("actor_id") or MEMORY_ACTOR_ID
@@ -112,6 +122,7 @@ def register_routes(app) -> None:
     # [DISABLED] route ảnh % Home Page — tạm thời bỏ.
     # app.add_route("/assets/{filename}", asset_route, methods=["GET"])
     # app.add_route("/results/{filename}", result_route, methods=["GET"])
+    app.add_route("/results/{filename}", result_pdf_route, methods=["GET"])
     app.add_route("/sessions/{session_id}/events", session_events_route, methods=["GET"])
     app.add_route("/chat", chat_route, methods=["POST"])
     app.add_route("/jobs/{job_id}", job_route, methods=["GET"])

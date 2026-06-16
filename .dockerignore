@@ -13,6 +13,7 @@ __pycache__/
 .git/
 .gitignore
 .DS_Store
+*.csv
 *.md
 !prompts/system_prompt.md
 !assets/

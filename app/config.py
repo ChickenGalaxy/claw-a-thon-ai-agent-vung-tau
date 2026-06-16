@@ -34,6 +34,8 @@ PROMPT_PATH = Path(os.environ.get("SYSTEM_PROMPT_PATH", "prompts/system_prompt.m
 DATA_SOURCE = os.environ.get("DATA_SOURCE", "parquet").strip().lower() or "parquet"
 PARQUET_PATH = Path(os.environ.get("PARQUET_PATH", "data/event_log.parquet"))
 PAYMENT_PARQUET_PATH = Path(os.environ.get("PAYMENT_PARQUET_PATH", "data/payment.parquet"))
+# Where generated result PDFs are written and served from (/results/<file>.pdf).
+RESULTS_DIR = Path(os.environ.get("RESULTS_DIR", "/tmp/agent_results"))
 MAX_UPLOAD_BYTES = int(os.environ.get("MAX_UPLOAD_BYTES", str(15 * 1024 * 1024)))
 MAX_FILE_CONTEXT_CHARS = int(os.environ.get("MAX_FILE_CONTEXT_CHARS", "12000"))
 
@@ -50,9 +52,12 @@ LLM_BASE_URL = os.environ.get("LLM_BASE_URL", "https://api.openai.com/v1").strip
 LLM_API_KEY = os.environ.get("LLM_API_KEY", "").strip()
 LLM_MODEL = os.environ.get("LLM_MODEL", "gpt-4o-mini").strip()
 # Bound each LLM call so a slow/hung upstream can't leave a chat job stuck in
-# "inprogess" forever (which made the UI spin until its own 180s poll timeout).
-LLM_TIMEOUT = float(os.environ.get("LLM_TIMEOUT", "120"))
-LLM_MAX_RETRIES = int(os.environ.get("LLM_MAX_RETRIES", "1"))
+# "inprogess" forever (which made the UI spin until its own poll timeout).
+LLM_TIMEOUT = float(os.environ.get("LLM_TIMEOUT", "60"))
+LLM_MAX_RETRIES = int(os.environ.get("LLM_MAX_RETRIES", "0"))
+# Qwen3 "thinking" mode emits huge reasoning and routinely times out (4+ min per
+# call). Disable it by default so calls return in <1s. Override to "true" to re-enable.
+LLM_ENABLE_THINKING = os.environ.get("LLM_ENABLE_THINKING", "false").strip().lower() in ("1", "true", "yes")
 llm = OpenAI(
     api_key=LLM_API_KEY,
     base_url=LLM_BASE_URL,

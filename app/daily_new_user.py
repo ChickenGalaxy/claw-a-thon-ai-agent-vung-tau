@@ -12,12 +12,60 @@ this module:
 
 import calendar
 import re
+import threading
 import unicodedata
 from datetime import datetime
 
 from .config import EMAIL_RECIPIENT, logger
-from .email_client import send_report_email
 from .query_engine import run_sql
+
+# Basic email matcher — good enough to pull a recipient out of a chat message.
+_EMAIL_RE = re.compile(r"[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}")
+
+# Pending "who should I email this to?" requests, keyed by actor+session. When the
+# user asks to email something without giving a recipient, we stash what to send
+# here and ask back; their next message (an email) completes it. The stored value
+# is a dict describing the pending send, e.g.
+#   {"kind": "daily_new_user", "message": "<original request>"}
+#   {"kind": "generic", "subject": "...", "body": "..."}
+_PENDING: dict[str, dict] = {}
+_PENDING_LOCK = threading.Lock()
+
+
+def extract_email(message: str) -> str | None:
+    """Return the first email address found in the message, or None."""
+    match = _EMAIL_RE.search(message or "")
+    return match.group(0) if match else None
+
+
+def extract_emails(message: str) -> list[str]:
+    """Return ALL distinct email addresses found in the message, in order."""
+    seen, out = set(), []
+    for m in _EMAIL_RE.findall(message or ""):
+        if m not in seen:
+            seen.add(m)
+            out.append(m)
+    return out
+
+
+def _pending_key(actor_id: str, session_id: str) -> str:
+    return f"{actor_id}:{session_id}"
+
+
+def set_pending_email(actor_id: str, session_id: str, pending: dict) -> None:
+    with _PENDING_LOCK:
+        _PENDING[_pending_key(actor_id, session_id)] = pending
+
+
+def pop_pending_email(actor_id: str, session_id: str) -> dict | None:
+    """Return and clear the stashed pending email for this session, if any."""
+    with _PENDING_LOCK:
+        return _PENDING.pop(_pending_key(actor_id, session_id), None)
+
+
+def peek_pending_email(actor_id: str, session_id: str) -> bool:
+    with _PENDING_LOCK:
+        return _pending_key(actor_id, session_id) in _PENDING
 
 _MONTH_NAMES_VI = {
     "một": 1, "hai": 2, "ba": 3, "tư": 4, "bốn": 4, "năm": 5, "sáu": 6,
@@ -95,8 +143,53 @@ def _fmt_yymmdd(value: str) -> str:
     return s
 
 
-def handle_daily_new_user_email(message: str, progress=None) -> dict:
-    """Full flow: parse month → compute → email → return success dict for the UI."""
+def _build_report_markdown(month: int, year: int, report_rows: list[dict], total: int) -> str:
+    """Markdown report (title + summary + table) shared by the UI, email HTML, and PDF."""
+    lines = [
+        f"### Báo cáo Daily New User — Tháng {month:02d}/{year}",
+        "",
+        f"Tổng new user trong tháng: **{total:,}**  •  Số ngày có new user: **{len(report_rows)}**",
+        "",
+        "| Ngày đăng ký | New users |",
+        "|---|---:|",
+    ]
+    for r in report_rows:
+        lines.append(f"| {r['date']} | {r['new_users']:,} |")
+    if not report_rows:
+        lines.append("| (không có dữ liệu) | 0 |")
+    return "\n".join(lines)
+
+
+def build_daily_new_user_report(message: str, progress=None) -> str:
+    """Compute the daily-new-user report for the requested month → Markdown (no email)."""
+    now = datetime.now()
+    year, month = parse_month_year(message, now)
+    if progress:
+        progress(f"Đang tính báo cáo daily new user tháng {month:02d}/{year}.")
+    computed = compute_daily_new_users(year, month)
+    report_rows = [
+        {"date": _fmt_yymmdd(r.get("reg_date")), "new_users": int(r.get("new_users") or 0)}
+        for r in computed["rows"]
+    ]
+    if progress:
+        progress(f"Đã tính xong: {len(report_rows)} ngày có new user, tổng {computed['total_new_users']} user.")
+    return _build_report_markdown(month, year, report_rows, computed["total_new_users"])
+
+
+def handle_daily_new_user_email(message: str, progress=None, recipient=None) -> dict:
+    """Full flow: parse month → compute → email (HTML + PDF) → return UI dict.
+
+    ``recipient`` may be a single address or a list; defaults to EMAIL_RECIPIENT.
+    """
+    # Import here to avoid a circular import at module load (email_output is light).
+    from .email_output import handle_email_output
+
+    if isinstance(recipient, list):
+        recipients = [r.strip() for r in recipient if r and r.strip()]
+    else:
+        recipients = [(recipient or EMAIL_RECIPIENT or "").strip()]
+    recipients = [r for r in recipients if r]
+
     now = datetime.now()
     year, month = parse_month_year(message, now)
     if progress:
@@ -108,49 +201,23 @@ def handle_daily_new_user_email(message: str, progress=None) -> dict:
     if progress:
         progress(f"Đã tính xong: {len(rows)} ngày có new user, tổng {total} user.")
 
-    # Pre-format dates to YYYY-MM-DD so the email composer never has to parse the
-    # YYMMDD user_id prefix (which it tends to misread).
     report_rows = [
         {"date": _fmt_yymmdd(r.get("reg_date")), "new_users": int(r.get("new_users") or 0)}
         for r in rows
     ]
-    report = {
-        "metric": "daily_new_user",
-        "month": month,
-        "year": year,
-        "rows": report_rows,
-        "total_new_users": total,
-        "recipient": EMAIL_RECIPIENT,
-    }
+    report_md = _build_report_markdown(month, year, report_rows, total)
 
     if progress:
-        progress(f"Đang gọi email agent để gửi báo cáo tới {EMAIL_RECIPIENT}.")
-    email_result = send_report_email(report, recipient=EMAIL_RECIPIENT)
-    email_ok = email_result.get("status") == "sent"
-
-    preview_lines = [f"  • {_fmt_yymmdd(r.get('reg_date'))}: {r.get('new_users')} new user" for r in rows[:10]]
-    preview = "\n".join(preview_lines) if preview_lines else "  (không có new user nào trong tháng này)"
-    more = f"\n  … và {len(rows) - 10} ngày khác" if len(rows) > 10 else ""
-
-    if email_ok:
-        transport = email_result.get("transport", "?")
-        sent_note = (
-            f"✅ Đã gửi email báo cáo tới {EMAIL_RECIPIENT}"
-            + (" (chế độ MOCK — email được ghi log, chưa gửi thật)." if transport == "mock" else ".")
-        )
-    else:
-        sent_note = (
-            f"⚠️ Đã tính xong báo cáo nhưng KHÔNG gửi được email: "
-            f"{email_result.get('message') or email_result.get('detail')}"
-        )
-
-    response = (
-        f"Báo cáo Daily New User — Tháng {month:02d}/{year}\n\n"
-        f"Tổng new user trong tháng: {total}\n"
-        f"Số ngày có new user: {len(rows)}\n\n"
-        f"Chi tiết theo ngày đăng ký:\n{preview}{more}\n\n"
-        f"{sent_note}"
+        progress(f"Đang định dạng & gửi báo cáo tới {', '.join(recipients)}.")
+    email_out = handle_email_output(
+        report_md, recipient=recipients,
+        subject=f"[ZaloPay Analytics] Daily New User — Tháng {month:02d}/{year}",
+        progress=progress,
     )
+    email_result = email_out.get("email", {})
+    sent_note = email_out.get("response", "")
+
+    response = f"{report_md}\n\n{sent_note}"
 
     return {
         "status": "success",
