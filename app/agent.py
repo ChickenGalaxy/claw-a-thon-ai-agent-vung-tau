@@ -258,6 +258,19 @@ def run_chat_job(job_id: str, payload: dict[str, Any]) -> None:
     update_job(job_id, {"status": "inprogess", "updated_at": datetime.now().isoformat()})
     add_job_process(job_id, "Bắt đầu xử lý yêu cầu.")
     payload_with_job_id = {**payload, "_job_id": job_id}
-    result = analyze_payload(payload_with_job_id, session_id=job_id, progress=lambda message: add_job_process(job_id, message))
-    status = "completed" if result.get("status") == "success" else "error"
+    try:
+        result = analyze_payload(payload_with_job_id, session_id=job_id, progress=lambda message: add_job_process(job_id, message))
+        status = "completed" if result.get("status") == "success" else "error"
+    except Exception as error:
+        # Never leave a job stuck in "inprogess" — the UI would spin until its own
+        # poll timeout. Always land on a terminal status with a usable message.
+        logger.exception("run_chat_job failed for %s", job_id)
+        result = {
+            "status": "error",
+            "message": "Agent gặp lỗi khi xử lý yêu cầu. Vui lòng thử lại.",
+            "detail": type(error).__name__,
+            "timestamp": datetime.now().isoformat(),
+        }
+        status = "error"
+        add_job_process(job_id, "Đã xảy ra lỗi trong quá trình xử lý.")
     update_job(job_id, {"status": status, "result": result, "updated_at": datetime.now().isoformat()})

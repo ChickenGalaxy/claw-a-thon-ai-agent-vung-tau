@@ -12,7 +12,15 @@ from .storage import load_upload_index, register_upload, safe_filename, save_upl
 
 
 async def home_page(request) -> HTMLResponse:
-    return HTMLResponse(FRONTEND_INDEX.read_text(encoding="utf-8"))
+    # Never let the browser serve a stale cached UI — always fetch the latest HTML.
+    return HTMLResponse(
+        FRONTEND_INDEX.read_text(encoding="utf-8"),
+        headers={
+            "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
+            "Pragma": "no-cache",
+            "Expires": "0",
+        },
+    )
 
 
 async def health_route(request) -> JSONResponse:

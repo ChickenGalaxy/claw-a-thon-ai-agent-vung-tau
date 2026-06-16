@@ -49,7 +49,16 @@ SUPABASE_LIMIT = int(os.environ.get("SUPABASE_LIMIT", "10"))
 LLM_BASE_URL = os.environ.get("LLM_BASE_URL", "https://api.openai.com/v1").strip().rstrip("/")
 LLM_API_KEY = os.environ.get("LLM_API_KEY", "").strip()
 LLM_MODEL = os.environ.get("LLM_MODEL", "gpt-4o-mini").strip()
-llm = OpenAI(api_key=LLM_API_KEY, base_url=LLM_BASE_URL)
+# Bound each LLM call so a slow/hung upstream can't leave a chat job stuck in
+# "inprogess" forever (which made the UI spin until its own 180s poll timeout).
+LLM_TIMEOUT = float(os.environ.get("LLM_TIMEOUT", "120"))
+LLM_MAX_RETRIES = int(os.environ.get("LLM_MAX_RETRIES", "1"))
+llm = OpenAI(
+    api_key=LLM_API_KEY,
+    base_url=LLM_BASE_URL,
+    timeout=LLM_TIMEOUT,
+    max_retries=LLM_MAX_RETRIES,
+)
 
 MEMORY_BASE_URL = os.environ.get("MEMORY_BASE_URL", "https://agentbase.api.vngcloud.vn/memory").rstrip("/")
 AGENTBASE_MEMORY_ID = os.environ.get("AGENTBASE_MEMORY_ID", "").strip()

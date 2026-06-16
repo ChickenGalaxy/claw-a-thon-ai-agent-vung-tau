@@ -20,7 +20,7 @@ printf '{}' > "$DOCKER_CONFIG/config.json"
 S="greennode-agentbase-skills/.claude/skills/agentbase/scripts"
 RUNTIME_ID="${RUNTIME_ID:-runtime-30d2e3d5-b5d2-4d62-bba8-9ded41801c70}"
 IMAGE_BASE="${IMAGE_BASE:-vcr.vngcloud.vn/111480-abp111915/claw-a-thon-ai-agent-vung-tau}"
-FLAVOR="${FLAVOR:-runtime-s2-general-2x4}"
+FLAVOR="${FLAVOR:-runtime-s2-general-4x8}"
 # AgentBase Runtime chạy amd64 — KHÔNG đổi. Build arm64 sẽ chắc chắn lỗi khi deploy.
 PLATFORM="linux/amd64"
 ENV_FILE="${ENV_FILE:-.env}"

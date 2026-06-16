@@ -102,8 +102,12 @@
     input[type=file] { width:100%; color:var(--muted); font-size:12px; }
 
     /* === MAIN === */
-    main { display:grid; grid-template-rows:auto 1fr auto auto; min-width:0; max-height:100vh; overflow:hidden; background:var(--bg); }
-    header { padding:12px 24px; border-bottom:1px solid var(--border); background:var(--panel); display:flex; align-items:center; gap:14px; }
+    main { display:grid; grid-template-rows:auto auto 1fr auto auto; min-width:0; max-height:100vh; overflow:hidden; background:var(--bg); }
+    header    { grid-row:1; padding:12px 24px; border-bottom:1px solid var(--border); background:var(--panel); display:flex; align-items:center; gap:14px; }
+    .search-bar { grid-row:2; }
+    #chat       { grid-row:3; }
+    #suggestions{ grid-row:4; }
+    footer      { grid-row:5; }
     .header-info { flex:1; min-width:0; }
     .header-title-row { display:flex; align-items:center; gap:10px; }
     .header-logo { display:flex; align-items:baseline; font-size:16px; font-weight:900; letter-spacing:-0.5px; flex-shrink:0; }
@@ -114,6 +118,54 @@
     .header-subtitle { font-size:12px; color:var(--muted); margin-top:1px; }
     #status { display:none; }
     .status-dot { display:inline-block; width:7px; height:7px; border-radius:50%; background:var(--green); box-shadow:0 0 5px rgba(6,199,85,.55); }
+
+    /* === SEARCH === */
+    .search-btn {
+      width:38px; height:38px; border-radius:10px; border:1px solid var(--border);
+      background:var(--soft); color:var(--muted); cursor:pointer;
+      display:flex; align-items:center; justify-content:center; flex-shrink:0;
+      transition:background .15s, border-color .15s, color .15s, box-shadow .15s;
+    }
+    .search-btn:hover { background:var(--accent-soft); border-color:var(--blue); color:var(--blue); box-shadow:0 2px 8px rgba(0,104,255,.12); }
+    .search-btn.active { background:var(--accent-soft); border-color:var(--blue); color:var(--blue); box-shadow:0 2px 8px rgba(0,104,255,.15); }
+    .search-bar {
+      display:none; align-items:center; gap:10px;
+      padding:10px 24px; background:var(--panel); border-bottom:1px solid var(--border);
+      animation: slideDown .18s ease;
+    }
+    @keyframes slideDown { from { opacity:0; transform:translateY(-6px); } to { opacity:1; transform:translateY(0); } }
+    .search-bar.open { display:flex; }
+    .search-bar input {
+      flex:1; border:1px solid var(--border); border-radius:10px; padding:8px 14px;
+      font:inherit; font-size:13px; background:var(--soft); color:var(--text); outline:none;
+      transition:border-color .2s, box-shadow .2s;
+    }
+    .search-bar input:focus { border-color:var(--blue); box-shadow:0 0 0 3px rgba(0,104,255,.08); }
+    .search-nav { display:flex; align-items:center; gap:6px; flex-shrink:0; }
+    .search-nav button {
+      width:30px; height:30px; border-radius:8px; border:1px solid var(--border);
+      background:var(--soft); color:var(--muted); cursor:pointer; font-size:12px;
+      display:flex; align-items:center; justify-content:center; padding:0; line-height:1;
+    }
+    .search-nav button:hover { border-color:var(--blue); color:var(--blue); background:var(--accent-soft); }
+    .search-count { font-size:12px; color:var(--muted); min-width:64px; text-align:center; flex-shrink:0; }
+    .search-close { background:none; border:0; color:var(--muted); cursor:pointer; font-size:20px; line-height:1; padding:2px 4px; flex-shrink:0; }
+    .search-close:hover { color:var(--text); }
+    mark { background:rgba(255,193,7,.45); border-radius:3px; color:inherit; padding:0 1px; }
+    .message.search-current { outline:2px solid var(--blue); outline-offset:3px; border-radius:16px; }
+
+    /* === SKELETON === */
+    @keyframes shimmer {
+      0%   { background-position: -400px 0; }
+      100% { background-position:  400px 0; }
+    }
+    .skeleton-line {
+      height:12px; border-radius:6px; margin-bottom:8px;
+      background: linear-gradient(90deg, var(--soft) 25%, var(--border) 50%, var(--soft) 75%);
+      background-size: 800px 100%;
+      animation: shimmer 1.4s infinite linear;
+    }
+    .skeleton-line:last-child { margin-bottom:0; width:60%; }
 
     /* === SUGGESTED PROMPTS === */
     .suggestions { padding:16px 24px 0; display:flex; flex-direction:column; gap:10px; }
@@ -149,17 +201,20 @@
 
     /* === CHAT === */
     #chat { overflow:auto; padding:20px 24px; display:flex; flex-direction:column; gap:12px; }
-    .message { max-width:min(780px,100%); overflow-wrap:anywhere; padding:12px 16px; border:1px solid var(--border); border-radius:16px; background:var(--panel); line-height:1.6; white-space:pre-wrap; font-size:14px; }
+    .message { flex-shrink:0; max-width:min(780px,100%); overflow-wrap:anywhere; padding:12px 16px; border:1px solid var(--border); border-radius:16px; background:var(--panel); line-height:1.6; white-space:pre-wrap; font-size:14px; }
     .message img { display:block; max-width:min(100%,520px); height:auto; margin-top:10px; border-radius:12px; border:1px solid var(--border); }
     .user { align-self:flex-end; background:var(--accent-soft); border-color:rgba(0,104,255,.22); }
     .assistant { align-self:flex-start; }
     .error { color:var(--danger); }
 
     /* === THINKING / PROCESS === */
+    @keyframes processIn { from { opacity:0; transform:translateY(6px); } to { opacity:1; transform:translateY(0); } }
     .process {
+      flex-shrink: 0;
       align-self: flex-start; max-width: min(640px,100%);
       border: 1px solid var(--border); border-radius: 14px;
       background: var(--panel); overflow: hidden;
+      animation: processIn .22s ease forwards;
     }
     .process-head {
       display: flex; align-items: center; justify-content: space-between;
@@ -250,8 +305,20 @@
           </div>
           <div class="header-subtitle">Ask, analyze, and generate product insights from your data</div>
         </div>
+        <button class="search-btn" id="search-toggle" title="Tìm kiếm trong chat (⌘F)">
+          <svg width="19" height="19" viewBox="0 0 19 19" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="8" cy="8" r="5.5"/><line x1="12.5" y1="12.5" x2="17" y2="17"/></svg>
+        </button>
         <div id="status"></div>
       </header>
+      <div class="search-bar" id="search-bar">
+        <input id="search-input" type="text" placeholder="Tìm kiếm trong cuộc hội thoại..." autocomplete="off" />
+        <div class="search-nav">
+          <span class="search-count" id="search-count"></span>
+          <button id="search-prev" title="Trước">▲</button>
+          <button id="search-next" title="Sau">▼</button>
+        </div>
+        <button class="search-close" id="search-close" title="Đóng">✕</button>
+      </div>
       <section id="chat"></section>
       <div id="suggestions" class="suggestions">
         <div class="suggestions-label">Suggested prompts</div>
@@ -422,28 +489,44 @@
           </div>
           <button class="process-toggle" type="button">Thu gọn</button>
         </div>
-        <div class="process-body"><ol class="process-list"></ol></div>`;
+        <div class="process-body">
+          <div class="process-skeleton">
+            <div class="skeleton-line" style="width:80%"></div>
+            <div class="skeleton-line" style="width:65%"></div>
+            <div class="skeleton-line"></div>
+          </div>
+          <ol class="process-list" style="display:none"></ol>
+        </div>`;
+      // Append to the DOM FIRST so the bar is guaranteed visible even if any
+      // later wiring throws — then attach the toggle handler defensively.
+      chatEl.appendChild(node);
+      chatEl.scrollTop = chatEl.scrollHeight;
       const btn = node.querySelector(".process-toggle");
-      btn.onclick = () => {
+      if (btn) btn.onclick = () => {
         node.classList.toggle("collapsed");
         btn.textContent = node.classList.contains("collapsed") ? "Mở rộng" : "Thu gọn";
       };
-      chatEl.appendChild(node);
-      chatEl.scrollTop = chatEl.scrollHeight;
       return node;
     }
     function updateProcessMessage(node, steps = [], done = false) {
       if (!node) return;
+      const skeleton = node.querySelector(".process-skeleton");
       const list = node.querySelector(".process-list");
       const label = node.querySelector(".process-label");
-      list.innerHTML = "";
-      for (const step of steps) {
-        const item = document.createElement("li");
-        item.className = "process-step";
-        item.innerHTML = `<div class="step-dot"></div><div class="step-text">${escapeHtml(step.message || String(step))}</div>`;
-        list.appendChild(item);
+      if (steps.length > 0) {
+        if (skeleton) skeleton.style.display = "none";
+        list.style.display = "";
+        list.innerHTML = "";
+        for (const step of steps) {
+          const item = document.createElement("li");
+          item.className = "process-step";
+          item.innerHTML = `<div class="step-dot"></div><div class="step-text">${escapeHtml(step.message || String(step))}</div>`;
+          list.appendChild(item);
+        }
       }
       if (done) {
+        if (skeleton) skeleton.style.display = "none";
+        list.style.display = "";
         node.classList.add("done");
         if (label) label.textContent = "Hoàn thành";
       }
@@ -560,18 +643,39 @@
       }
       inputEl.value = "";
     });
-    async function readJsonSafely(response) { try { return await response.json(); } catch { return { status:"error", message: await response.text() }; } }
+    async function readJsonSafely(response) {
+      // Read the body as text ONCE, then parse — calling .json() then .text() on
+      // the same response throws "body already read" and masked real errors.
+      const raw = await response.text();
+      try { return JSON.parse(raw); } catch { return { status:"error", message: raw || "Phản hồi không hợp lệ." }; }
+    }
     async function pollJob(jobId, processNode) {
-      for (let attempt = 0; attempt < 180; attempt++) {
-        const response = await fetch(`/jobs/${jobId}`); const data = await readJsonSafely(response);
+      // 300 attempts × 1s ≈ 5 min — comfortably longer than the backend's bounded
+      // LLM calls, so the UI only times out if the server is truly unresponsive.
+      let transientErrors = 0;
+      for (let attempt = 0; attempt < 300; attempt++) {
+        let response, data;
+        try {
+          response = await fetch(`/jobs/${jobId}`);
+          data = await readJsonSafely(response);
+        } catch {
+          // Network blip — keep polling a few times before giving up.
+          if (++transientErrors > 5) {
+            updateProcessMessage(processNode, [], true);
+            return { status:"error", message:"Mất kết nối tới agent. Vui lòng thử lại." };
+          }
+          await new Promise((resolve) => setTimeout(resolve, 1000));
+          continue;
+        }
+        transientErrors = 0;
         const isDone = !response.ok || data.status === "error" || data.status === "completed";
         updateProcessMessage(processNode, data.process || [], isDone);
-        if (!response.ok || data.status === "error") return data;
+        if (!response.ok || data.status === "error") return data.result || data;
         if (data.status === "completed") return data.result;
         await new Promise((resolve) => setTimeout(resolve, 1000));
       }
       updateProcessMessage(processNode, [], true);
-      return { status:"error", message:"Agent analysis timed out. Please try again." };
+      return { status:"error", message:"Agent xử lý quá lâu. Vui lòng thử lại." };
     }
     messageEl.addEventListener("keydown", (event) => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); formEl.requestSubmit(); } });
     formEl.addEventListener("submit", async (event) => {
@@ -579,26 +683,141 @@
       const message = messageEl.value.trim(); if (!message || sendEl.disabled) return;
       const fileIds = uploadedFiles.map(f => f.id);
       const fileNames = uploadedFiles.map(f => f.filename);
-      const filesToClear = [...uploadedFiles];
       showSuggestions(false);
       let userText = message;
       if (fileNames.length) userText += "\n📎 " + fileNames.join(", ");
       addMessage("user", userText); upsertSessionTitle(message); messageEl.value = ""; sendEl.disabled = true;
       uploadedFiles = []; renderFileList();
+      // Show the process bar immediately — double rAF guarantees a paint before fetch.
+      const processNode = addProcessMessage();
+      await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
       try {
         const response = await fetch("/chat", { method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({ message, file_ids:fileIds, actor_id:actorId, session_id:currentSessionId }) });
         const started = await readJsonSafely(response);
-        if (!response.ok || started.status === "error") { addMessage("assistant", started.message || "Agent trả về lỗi.", "error"); return; }
-        const processNode = addProcessMessage();
+        if (!response.ok || started.status === "error") {
+          if (processNode) processNode.remove();
+          addMessage("assistant", started.message || "Agent trả về lỗi.", "error"); return;
+        }
         updateProcessMessage(processNode, started.process || [{ message:"Đã nhận câu hỏi và đưa vào hàng đợi." }]);
         const data = await pollJob(started.job_id, processNode);
         addMessage("assistant", data.response || data.message || JSON.stringify(data, null, 2), data.status === "error" ? "error" : "");
-      } catch (error) { addMessage("assistant", `Không gọi được agent. Vui lòng thử lại. Chi tiết: ${error.message}`, "error"); messageEl.value = message; }
+      } catch (error) {
+        if (processNode) processNode.remove();
+        addMessage("assistant", `Không gọi được agent. Vui lòng thử lại. Chi tiết: ${error.message}`, "error"); messageEl.value = message;
+      }
       finally { statusEl.textContent = "ready"; sendEl.disabled = false; messageEl.focus(); }
     });
     document.getElementById("new-session").onclick = createSession;
     if (!sessions.length || !currentSessionId) createSession(); else { renderSessions(); loadSession(currentSessionId); }
     loadFiles(); messageEl.focus();
+
+    // === SEARCH ===
+    const searchToggleBtn = document.getElementById("search-toggle");
+    const searchBar = document.getElementById("search-bar");
+    const searchInput = document.getElementById("search-input");
+    const searchCount = document.getElementById("search-count");
+    const searchPrev = document.getElementById("search-prev");
+    const searchNext = document.getElementById("search-next");
+    const searchClose = document.getElementById("search-close");
+    let searchMatches = [], searchIndex = -1;
+
+    function highlightNode(node, query) {
+      // Walk all text nodes inside `node` and wrap matches with <mark>
+      const re = new RegExp(query.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "gi");
+      const walker = document.createTreeWalker(node, NodeFilter.SHOW_TEXT);
+      const hits = [];
+      let cur;
+      while ((cur = walker.nextNode())) {
+        if (re.test(cur.textContent)) hits.push(cur);
+        re.lastIndex = 0;
+      }
+      hits.forEach(textNode => {
+        const parts = textNode.textContent.split(re);
+        const matches = textNode.textContent.match(re) || [];
+        if (!matches.length) return;
+        const frag = document.createDocumentFragment();
+        parts.forEach((part, i) => {
+          if (part) frag.appendChild(document.createTextNode(part));
+          if (matches[i]) {
+            const mark = document.createElement("mark");
+            mark.textContent = matches[i];
+            frag.appendChild(mark);
+          }
+        });
+        textNode.parentNode.replaceChild(frag, textNode);
+      });
+    }
+
+    function removeHighlights(node) {
+      node.querySelectorAll("mark").forEach(mark => {
+        const parent = mark.parentNode;
+        parent.replaceChild(document.createTextNode(mark.textContent), mark);
+        parent.normalize();
+      });
+    }
+
+    function clearSearch() {
+      chatEl.querySelectorAll(".message").forEach(m => {
+        m.classList.remove("search-current");
+        removeHighlights(m);
+      });
+      searchMatches = []; searchIndex = -1;
+      searchCount.textContent = "";
+    }
+
+    function runSearch(query) {
+      clearSearch();
+      if (!query.trim()) return;
+      chatEl.querySelectorAll(".message:not(.process)").forEach(m => {
+        if (m.textContent.toLowerCase().includes(query.toLowerCase())) {
+          highlightNode(m, query);
+          searchMatches.push(m);
+        }
+      });
+      searchIndex = searchMatches.length > 0 ? 0 : -1;
+      updateSearchNav();
+    }
+
+    function updateSearchNav() {
+      searchMatches.forEach(m => m.classList.remove("search-current"));
+      if (!searchMatches.length) { searchCount.textContent = "Không tìm thấy"; return; }
+      searchCount.textContent = `${searchIndex + 1} / ${searchMatches.length}`;
+      searchMatches[searchIndex].classList.add("search-current");
+      searchMatches[searchIndex].scrollIntoView({ behavior: "smooth", block: "center" });
+    }
+
+    searchInput.addEventListener("input", () => runSearch(searchInput.value));
+    searchInput.addEventListener("keydown", e => {
+      if (e.key === "Enter") { e.preventDefault(); e.shiftKey ? searchPrev.click() : searchNext.click(); }
+      if (e.key === "Escape") searchClose.click();
+    });
+    searchNext.addEventListener("click", () => {
+      if (!searchMatches.length) return;
+      searchIndex = (searchIndex + 1) % searchMatches.length;
+      updateSearchNav();
+    });
+    searchPrev.addEventListener("click", () => {
+      if (!searchMatches.length) return;
+      searchIndex = (searchIndex - 1 + searchMatches.length) % searchMatches.length;
+      updateSearchNav();
+    });
+    searchClose.addEventListener("click", () => {
+      searchBar.classList.remove("open");
+      searchToggleBtn.classList.remove("active");
+      clearSearch(); searchInput.value = "";
+    });
+    searchToggleBtn.addEventListener("click", () => {
+      const open = searchBar.classList.toggle("open");
+      searchToggleBtn.classList.toggle("active", open);
+      if (open) { searchInput.focus(); } else { clearSearch(); searchInput.value = ""; }
+    });
+    document.addEventListener("keydown", e => {
+      if ((e.metaKey || e.ctrlKey) && e.key === "f") {
+        e.preventDefault();
+        searchBar.classList.add("open"); searchToggleBtn.classList.add("active");
+        searchInput.focus(); searchInput.select();
+      }
+    });
   </script>
 </body>
 </html>
