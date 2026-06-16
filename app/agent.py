@@ -3,6 +3,7 @@ from datetime import datetime
 from typing import Any
 
 from .config import DATA_SOURCE, JOBS, JOBS_LOCK, MEMORY_ACTOR_ID, PARQUET_PATH, SUPABASE_TABLE, logger
+from .daily_new_user import handle_daily_new_user_email, is_daily_new_user_email_request
 from .data_sources import fetch_rows, parquet_summary
 from .file_context import load_file_context
 # [DISABLED] Home Page % image output — tạm thời bỏ. Module homepage_ctr vẫn còn
@@ -96,6 +97,18 @@ def analyze_payload(payload: dict, session_id: str | None = None, progress=None)
         if wants_to_remember(message) and remember_long_term(actor_id, [message]):
             if progress:
                 progress("Đã ghi nhớ dài hạn yêu cầu của bạn.")
+
+        # Daily-new-user-in-a-month report → compute here, then hand off to the
+        # separate email agent to email the result to the configured recipient.
+        if is_daily_new_user_email_request(message):
+            email_result = handle_daily_new_user_email(message, progress=progress)
+            try:
+                create_memory_event(actor_id, effective_session_id, "assistant", email_result.get("response", ""))
+            except Exception:
+                logger.exception("create_memory_event(assistant) failed for daily-new-user email")
+            email_result["session_id"] = effective_session_id
+            email_result["actor_id"] = actor_id
+            return email_result
 
         file_context = []
         if progress:

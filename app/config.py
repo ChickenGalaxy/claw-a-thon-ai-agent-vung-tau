@@ -64,6 +64,16 @@ MEMORY_BASE_URL = os.environ.get("MEMORY_BASE_URL", "https://agentbase.api.vngcl
 AGENTBASE_MEMORY_ID = os.environ.get("AGENTBASE_MEMORY_ID", "").strip()
 MEMORY_STRATEGY_ID = os.environ.get("MEMORY_STRATEGY_ID", "").strip()
 MEMORY_ACTOR_ID = os.environ.get("MEMORY_ACTOR_ID", "web-user").strip() or "web-user"
+
+# --- Email agent (separate AgentBase runtime that sends report emails) ------
+# Local default points at the email agent running on port 8090. In production,
+# set this to the email agent's AgentBase endpoint URL.
+EMAIL_AGENT_URL = os.environ.get("EMAIL_AGENT_URL", "http://localhost:8090").strip().rstrip("/")
+EMAIL_RECIPIENT = os.environ.get("EMAIL_RECIPIENT", "trucnt7@vng.com.vn").strip()
+EMAIL_AGENT_TIMEOUT = int(os.environ.get("EMAIL_AGENT_TIMEOUT", "120"))
+# Optional bearer token when calling a deployed (PUBLIC) email agent endpoint.
+EMAIL_AGENT_TOKEN = os.environ.get("EMAIL_AGENT_TOKEN", "").strip()
+
 # IAM token endpoint. Default matches the AgentBase deploy scripts / endpoints whitelist
 # (iam.api.vngcloud.vn). Override via env if your tenant uses a different host.
 IAM_TOKEN_URL = os.environ.get(
