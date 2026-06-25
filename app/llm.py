@@ -51,7 +51,12 @@ def generate_sql(message: str, memory_context: list | None = None, long_term_fac
         "(e.g. a single overall ratio/total), do NOT add any GROUP BY at all.\n"
         "- For a single overall ratio across two tables, compute each side with a scalar "
         "subquery, e.g. SELECT (SELECT COUNT(DISTINCT user_id) FROM payment) * 1.0 / "
-        "(SELECT COUNT(DISTINCT user_id) FROM event_log) AS rate — no JOIN, no GROUP BY.\n\n"
+        "(SELECT COUNT(DISTINCT user_id) FROM event_log) AS rate — no JOIN, no GROUP BY.\n"
+        "- DATE HANDLING: `ymd` (and `payment_ymd`) is an INTEGER in YYYYMMDD form, "
+        "NOT a date. NEVER cast it to DATE and NEVER use TO_DATE/STRPTIME/DATE_TRUNC on it. "
+        "For monthly grouping use the string prefix: substr(CAST(ymd AS VARCHAR), 1, 6) AS month "
+        "(e.g. '202605'); for daily, group by ymd directly. The `timestamp` column IS a real "
+        "timestamp if you need finer time parts.\n\n"
         f"{SCHEMA_TEXT}"
     )
     hints = []
